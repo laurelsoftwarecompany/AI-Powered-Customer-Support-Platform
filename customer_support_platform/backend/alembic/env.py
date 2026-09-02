@@ -12,6 +12,8 @@ from app.database.models import (
     Message,
     Ticket,
     TicketMessage,
+    KnowledgeDocument,
+    KnowledgeChunk,
 )
 
 from app.config import settings

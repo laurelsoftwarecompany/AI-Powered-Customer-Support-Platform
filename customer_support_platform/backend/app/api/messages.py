@@ -1,10 +1,15 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
 from app.database.models.message import Message
 from app.database.models.conversation import Conversation
 from app.database.models.user import User, UserRole
+from app.database.models.ticket import Ticket, TicketStatus, TicketPriority
+from app.database.models.ticket_message import TicketMessage
 from app.api.auth import get_current_user
 from app.services.ai_service import generate_ai_response
 
@@ -16,19 +21,39 @@ router = APIRouter(
 
 
 # ============================================================
+# REQUEST MODEL
+# ============================================================
+
+class MessageCreate(BaseModel):
+    content: str = Field(
+        ...,
+        min_length=1,
+        max_length=5000
+    )
+
+
+# ============================================================
 # SEND MESSAGE
 # ============================================================
 
 @router.post("/{conversation_id}/messages")
 def send_message(
     conversation_id: int,
-    content: str,
+    message_data: MessageCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
 
+    content = message_data.content.strip()
+
+    if not content:
+        raise HTTPException(
+            status_code=400,
+            detail="Message cannot be empty"
+        )
+
     # --------------------------------------------------
-    # 1. Find conversation
+    # 1. FIND CONVERSATION
     # --------------------------------------------------
 
     conversation = (
@@ -58,8 +83,10 @@ def send_message(
                 detail="You do not have access to this conversation"
             )
 
-        # If AI has been taken over by a human,
-        # don't generate another AI response.
+        # --------------------------------------------------
+        # HUMAN SUPPORT HAS TAKEN OVER
+        # --------------------------------------------------
+
         if not conversation.ai_active:
 
             customer_message = Message(
@@ -70,7 +97,7 @@ def send_message(
 
             db.add(customer_message)
 
-            conversation.updated_at = customer_message.created_at
+            conversation.updated_at = datetime.utcnow()
 
             db.commit()
             db.refresh(customer_message)
@@ -78,6 +105,7 @@ def send_message(
             return {
                 "customer_message": customer_message,
                 "ai_message": None,
+                "escalated": False,
                 "message": "Message sent to human support"
             }
 
@@ -90,7 +118,6 @@ def send_message(
         UserRole.ADMIN
     }:
 
-        # Human response
         human_message = Message(
             conversation_id=conversation_id,
             sender_type=(
@@ -106,16 +133,18 @@ def send_message(
         # Human has control of conversation
         conversation.ai_active = False
         conversation.status = "human_support"
-        conversation.updated_at = human_message.created_at
+        conversation.updated_at = datetime.utcnow()
 
         db.commit()
         db.refresh(human_message)
 
         return {
-            "human_message": human_message
+            "human_message": human_message,
+            "message": "Message sent to customer"
         }
 
     else:
+
         raise HTTPException(
             status_code=403,
             detail="You do not have permission to send messages"
@@ -156,6 +185,7 @@ def send_message(
     )
 
     db.add(customer_message)
+
     db.commit()
     db.refresh(customer_message)
 
@@ -182,18 +212,85 @@ def send_message(
 
     db.add(ai_message)
 
-    conversation.updated_at = customer_message.created_at
+    # --------------------------------------------------
+    # 8. CHECK AI CONFIDENCE
+    # --------------------------------------------------
+
+    should_escalate = ai_result.get(
+        "should_escalate",
+        False
+    )
+
+    if should_escalate:
+
+        # ----------------------------------------------
+        # AI HANDS CONVERSATION TO HUMAN
+        # ----------------------------------------------
+
+        conversation.ai_active = False
+        conversation.status = "human_support"
+        conversation.updated_at = datetime.utcnow()
+
+        # ----------------------------------------------
+        # CREATE SUPPORT TICKET
+        # ----------------------------------------------
+
+        ticket = Ticket(
+            customer_id=current_user.id,
+            subject=f"AI Escalation: {ai_result['intent']}",
+            description=content,
+            category=ai_result["intent"],
+            priority=TicketPriority.MEDIUM,
+            status=TicketStatus.OPEN
+        )
+
+        db.add(ticket)
+
+        db.flush()
+
+        # ----------------------------------------------
+        # ADD CUSTOMER MESSAGE TO TICKET
+        # ----------------------------------------------
+
+        ticket_message = TicketMessage(
+            ticket_id=ticket.id,
+            sender_id=current_user.id,
+            sender_type="customer",
+            content=content,
+            is_internal=False
+        )
+
+        db.add(ticket_message)
+
+        db.commit()
+
+        db.refresh(ai_message)
+        db.refresh(ticket)
+
+        return {
+            "customer_message": customer_message,
+            "ai_message": ai_message,
+            "ticket": ticket,
+            "escalated": True,
+            "message": (
+                "Your request has been escalated to human support."
+            )
+        }
+
+    # --------------------------------------------------
+    # 9. NORMAL AI RESPONSE
+    # --------------------------------------------------
+
+    conversation.updated_at = datetime.utcnow()
 
     db.commit()
-    db.refresh(ai_message)
 
-    # --------------------------------------------------
-    # 8. RETURN
-    # --------------------------------------------------
+    db.refresh(ai_message)
 
     return {
         "customer_message": customer_message,
-        "ai_message": ai_message
+        "ai_message": ai_message,
+        "escalated": False
     }
 
 
@@ -209,7 +306,7 @@ def get_messages(
 ):
 
     # --------------------------------------------------
-    # 1. Find conversation
+    # 1. FIND CONVERSATION
     # --------------------------------------------------
 
     conversation = (
@@ -227,7 +324,7 @@ def get_messages(
         )
 
     # --------------------------------------------------
-    # 2. Authorization
+    # 2. AUTHORIZATION
     # --------------------------------------------------
 
     if current_user.role == UserRole.CUSTOMER:
@@ -242,13 +339,14 @@ def get_messages(
         UserRole.AGENT,
         UserRole.ADMIN
     }:
+
         raise HTTPException(
             status_code=403,
             detail="You do not have permission to view this conversation"
         )
 
     # --------------------------------------------------
-    # 3. Get messages
+    # 3. GET MESSAGES
     # --------------------------------------------------
 
     messages = (

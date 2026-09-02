@@ -6,6 +6,7 @@ from jose import jwt
 from pwdlib import PasswordHash
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database.connection import get_db
 from app.database.models.user import User
 
@@ -15,16 +16,27 @@ router = APIRouter(
     tags=["Authentication"]
 )
 
+
 password_hash = PasswordHash.recommended()
+
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/auth/login"
 )
 
-SECRET_KEY = "change-this-secret-key-later"
+
+# ============================================================
+# JWT CONFIGURATION
+# ============================================================
+
+SECRET_KEY = settings.JWT_SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
+
+# ============================================================
+# PASSWORD VERIFICATION
+# ============================================================
 
 def verify_password(
     password: str,
@@ -35,6 +47,10 @@ def verify_password(
         hashed_password
     )
 
+
+# ============================================================
+# CREATE JWT ACCESS TOKEN
+# ============================================================
 
 def create_access_token(user_id: int):
     expire = datetime.now(timezone.utc) + timedelta(
@@ -52,6 +68,10 @@ def create_access_token(user_id: int):
         algorithm=ALGORITHM
     )
 
+
+# ============================================================
+# LOGIN
+# ============================================================
 
 @router.post("/login")
 def login(
@@ -83,12 +103,19 @@ def login(
             detail="User account is inactive"
         )
 
-    access_token = create_access_token(user.id)
+    access_token = create_access_token(
+        user.id
+    )
 
     return {
         "access_token": access_token,
         "token_type": "bearer"
     }
+
+
+# ============================================================
+# GET CURRENT USER
+# ============================================================
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -119,13 +146,28 @@ def get_current_user(
                 detail="User not found"
             )
 
+        if not user.is_active:
+            raise HTTPException(
+                status_code=403,
+                detail="User account is inactive"
+            )
+
         return user
+
+    except HTTPException:
+        raise
 
     except Exception:
         raise HTTPException(
             status_code=401,
             detail="Invalid or expired token"
         )
+
+
+# ============================================================
+# CURRENT USER PROFILE
+# ============================================================
+
 @router.get("/me")
 def get_me(
     current_user: User = Depends(get_current_user)
