@@ -1,7 +1,6 @@
 from datetime import datetime
 
-from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -28,9 +27,15 @@ class KnowledgeChunk(Base):
         nullable=False,
     )
 
-    embedding = mapped_column(
-        Vector(384),
-        nullable=False,
+    # 384-dim embedding (all-MiniLM-L6-v2) stored as a JSON array.
+    # Nullable: a chunk exists as soon as a document is uploaded; the
+    # embedding is filled in by the indexing pass (knowledge_service.reindex).
+    # none_as_null=True so a missing embedding is SQL NULL (not JSON "null"),
+    # which keeps `.is_(None)` / `.isnot(None)` filters correct.
+    # Portable across SQLite and PostgreSQL; similarity search runs in Python.
+    embedding: Mapped[list[float] | None] = mapped_column(
+        JSON(none_as_null=True),
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(

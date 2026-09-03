@@ -12,6 +12,7 @@ from app.database.models.ticket import Ticket, TicketStatus, TicketPriority
 from app.database.models.ticket_message import TicketMessage
 from app.api.auth import get_current_user
 from app.services.ai_service import generate_ai_response
+from app.services.knowledge_service import retrieve_context
 
 
 router = APIRouter(
@@ -190,16 +191,30 @@ def send_message(
     db.refresh(customer_message)
 
     # --------------------------------------------------
-    # 6. GENERATE AI RESPONSE
+    # 6. RETRIEVE KNOWLEDGE-BASE CONTEXT (RAG)
+    # --------------------------------------------------
+    # Search the knowledge base for passages relevant to this message and
+    # hand them to the model as grounding. Retrieval failures must never
+    # block a reply, so fall back to an un-grounded answer.
+
+    try:
+        kb_context, kb_sources = retrieve_context(db, content)
+    except Exception as exc:  # noqa: BLE001
+        print(f"KB retrieval failed: {exc}")
+        kb_context, kb_sources = None, []
+
+    # --------------------------------------------------
+    # 7. GENERATE AI RESPONSE
     # --------------------------------------------------
 
     ai_result = generate_ai_response(
         message=content,
-        conversation_history=conversation_history
+        conversation_history=conversation_history,
+        context=kb_context,
     )
 
     # --------------------------------------------------
-    # 7. SAVE AI RESPONSE
+    # 8. SAVE AI RESPONSE (with the articles it cited)
     # --------------------------------------------------
 
     ai_message = Message(
@@ -207,13 +222,14 @@ def send_message(
         sender_type="ai",
         content=ai_result["response"],
         intent=ai_result["intent"],
-        confidence=ai_result["confidence"]
+        confidence=ai_result["confidence"],
+        sources=kb_sources or None,
     )
 
     db.add(ai_message)
 
     # --------------------------------------------------
-    # 8. CHECK AI CONFIDENCE
+    # 9. CHECK AI CONFIDENCE
     # --------------------------------------------------
 
     should_escalate = ai_result.get(
@@ -270,6 +286,7 @@ def send_message(
         return {
             "customer_message": customer_message,
             "ai_message": ai_message,
+            "sources": kb_sources,
             "ticket": ticket,
             "escalated": True,
             "message": (
@@ -278,7 +295,7 @@ def send_message(
         }
 
     # --------------------------------------------------
-    # 9. NORMAL AI RESPONSE
+    # 10. NORMAL AI RESPONSE
     # --------------------------------------------------
 
     conversation.updated_at = datetime.utcnow()
@@ -290,6 +307,7 @@ def send_message(
     return {
         "customer_message": customer_message,
         "ai_message": ai_message,
+        "sources": kb_sources,
         "escalated": False
     }
 

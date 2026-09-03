@@ -1,0 +1,268 @@
+@import "tailwindcss";
+
+/* ==================================================================
+   Laurel Support Console - design tokens
+   Indigo brand (#4F46E5) on cool slate neutrals, matched to the
+   customer mobile app. Ticket state carries its own semantic hue set
+   (blue / amber / violet / emerald / slate), identical to the app's
+   status badges, kept separate from the brand.
+   ================================================================== */
+
+:root {
+  --ground: #f7f8fb;
+  --surface: #ffffff;
+  --surface-2: #f1f4f9;
+  --surface-3: #e8ecf4;
+  --border: #e3e7f0;
+  --border-strong: #cbd3e1;
+
+  --ink: #0f172a;
+  --ink-soft: #48546c;
+  --ink-faint: #8592a8;
+
+  --brand: #4f46e5;
+  --brand-hover: #4338ca;
+  --brand-ink: #ffffff;
+  --brand-wash: #eaecfd;
+
+  --focus: #6366f1;
+
+  /* ticket status - matches the mobile app's status badges */
+  --st-open: #2563eb;
+  --st-open-wash: #dbeafe;
+  --st-progress: #b45309;
+  --st-progress-wash: #fef3c7;
+  --st-waiting: #7c3aed;
+  --st-waiting-wash: #ede9fe;
+  --st-resolved: #047857;
+  --st-resolved-wash: #d1fae5;
+  --st-closed: #475569;
+  --st-closed-wash: #f1f5f9;
+
+  /* priority */
+  --pr-urgent: #dc2626;
+  --pr-high: #ea580c;
+  --pr-medium: #b45309;
+  --pr-low: #64748b;
+
+  /* feedback */
+  --danger: #dc2626;
+  --danger-wash: #fdeaea;
+  --success: #047857;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 2px 4px rgba(15, 23, 42, 0.05), 0 8px 24px -12px rgba(15, 23, 42, 0.16);
+  --shadow-pop: 0 4px 12px rgba(15, 23, 42, 0.10), 0 16px 40px -12px rgba(15, 23, 42, 0.22);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0b0f1a;
+    --surface: #131826;
+    --surface-2: #1b2233;
+    --surface-3: #252d42;
+    --border: #2b3346;
+    --border-strong: #3d4761;
+
+    --ink: #e9ecf4;
+    --ink-soft: #a4adc0;
+    --ink-faint: #6c7689;
+
+    --brand: #818cf8;
+    --brand-hover: #a5b4fc;
+    --brand-ink: #0b0f1a;
+    --brand-wash: #242850;
+
+    --focus: #818cf8;
+
+    --st-open: #60a5fa;
+    --st-open-wash: #16233f;
+    --st-progress: #e0a458;
+    --st-progress-wash: #362713;
+    --st-waiting: #a78bfa;
+    --st-waiting-wash: #291e42;
+    --st-resolved: #34d399;
+    --st-resolved-wash: #0d2a20;
+    --st-closed: #94a3b8;
+    --st-closed-wash: #1f2736;
+
+    --pr-urgent: #f87171;
+    --pr-high: #fb923c;
+    --pr-medium: #e0a458;
+    --pr-low: #94a3b8;
+
+    --danger: #f87171;
+    --danger-wash: #3a1d1d;
+    --success: #34d399;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.4), 0 16px 40px -12px rgba(0, 0, 0, 0.7);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #0b0f1a;
+  --surface: #131826;
+  --surface-2: #1b2233;
+  --surface-3: #252d42;
+  --border: #2b3346;
+  --border-strong: #3d4761;
+  --ink: #e9ecf4;
+  --ink-soft: #a4adc0;
+  --ink-faint: #6c7689;
+  --brand: #818cf8;
+  --brand-hover: #a5b4fc;
+  --brand-ink: #0b0f1a;
+  --brand-wash: #242850;
+  --focus: #818cf8;
+  --st-open: #60a5fa;
+  --st-open-wash: #16233f;
+  --st-progress: #e0a458;
+  --st-progress-wash: #362713;
+  --st-waiting: #a78bfa;
+  --st-waiting-wash: #291e42;
+  --st-resolved: #34d399;
+  --st-resolved-wash: #0d2a20;
+  --st-closed: #94a3b8;
+  --st-closed-wash: #1f2736;
+  --pr-urgent: #f87171;
+  --pr-high: #fb923c;
+  --pr-medium: #e0a458;
+  --pr-low: #94a3b8;
+  --danger: #f87171;
+  --danger-wash: #3a1d1d;
+  --success: #34d399;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.4), 0 16px 40px -12px rgba(0, 0, 0, 0.7);
+}
+
+:root[data-theme="light"] {
+  --ground: #f7f8fb;
+  --surface: #ffffff;
+  --surface-2: #f1f4f9;
+  --surface-3: #e8ecf4;
+  --border: #e3e7f0;
+  --border-strong: #cbd3e1;
+  --ink: #0f172a;
+  --ink-soft: #48546c;
+  --ink-faint: #8592a8;
+  --brand: #4f46e5;
+  --brand-hover: #4338ca;
+  --brand-ink: #ffffff;
+  --brand-wash: #eaecfd;
+  --focus: #6366f1;
+  --st-open: #2563eb;
+  --st-open-wash: #dbeafe;
+  --st-progress: #b45309;
+  --st-progress-wash: #fef3c7;
+  --st-waiting: #7c3aed;
+  --st-waiting-wash: #ede9fe;
+  --st-resolved: #047857;
+  --st-resolved-wash: #d1fae5;
+  --st-closed: #475569;
+  --st-closed-wash: #f1f5f9;
+  --pr-urgent: #dc2626;
+  --pr-high: #ea580c;
+  --pr-medium: #b45309;
+  --pr-low: #64748b;
+  --danger: #dc2626;
+  --danger-wash: #fdeaea;
+  --success: #047857;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 2px 4px rgba(15, 23, 42, 0.05), 0 8px 24px -12px rgba(15, 23, 42, 0.16);
+  --shadow-pop: 0 4px 12px rgba(15, 23, 42, 0.10), 0 16px 40px -12px rgba(15, 23, 42, 0.22);
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-wash: var(--brand-wash);
+  --color-danger: var(--danger);
+  --color-danger-wash: var(--danger-wash);
+  --color-success: var(--success);
+
+  --color-st-open: var(--st-open);
+  --color-st-open-wash: var(--st-open-wash);
+  --color-st-progress: var(--st-progress);
+  --color-st-progress-wash: var(--st-progress-wash);
+  --color-st-waiting: var(--st-waiting);
+  --color-st-waiting-wash: var(--st-waiting-wash);
+  --color-st-resolved: var(--st-resolved);
+  --color-st-resolved-wash: var(--st-resolved-wash);
+  --color-st-closed: var(--st-closed);
+  --color-st-closed-wash: var(--st-closed-wash);
+
+  --color-pr-urgent: var(--pr-urgent);
+  --color-pr-high: var(--pr-high);
+  --color-pr-medium: var(--pr-medium);
+  --color-pr-low: var(--pr-low);
+
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  --shadow-card: var(--shadow-sm);
+  --shadow-panel: var(--shadow-md);
+  --shadow-pop: var(--shadow-pop);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+::selection {
+  background: var(--brand-wash);
+}
+
+/* Consistent, visible keyboard focus */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Numeric alignment in tables */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Thin scrollbars inside panels */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}

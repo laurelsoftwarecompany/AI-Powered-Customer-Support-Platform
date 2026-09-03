@@ -1,7 +1,33 @@
+# Python
 venv/
 .venv/
 __pycache__/
 *.pyc
 .env
+
+# Editors
 .vscode/
 .idea/
+
+# Local databases
+*.db
+*.sqlite3
+
+# Kaggle raw downloads (regenerate with backend/scripts/build_kb.py)
+customer_support_platform/backend/data/
+
+# Node
+node_modules/
+.next/
+.env*.local
+
+# Misc
+*.log
+
+# Documents
+Team A.pdf
+*.pdf
+
+# Mobile app (folder committed empty via .gitkeep)
+customer_support_platform/Mobile app/*
+!customer_support_platform/Mobile app/.gitkeep

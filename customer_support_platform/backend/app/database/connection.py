@@ -4,14 +4,19 @@ from sqlalchemy.orm import sessionmaker
 from app.config import settings
 
 
-# PostgreSQL database connection
+# SQLite needs check_same_thread=False to be used across FastAPI's
+# threadpool; PostgreSQL takes no special connect args.
+connect_args = (
+    {"check_same_thread": False} if settings.is_sqlite else {}
+)
+
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
+    connect_args=connect_args,
 )
 
 
-# Database session
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
@@ -19,7 +24,6 @@ SessionLocal = sessionmaker(
 )
 
 
-# FastAPI database dependency
 def get_db():
     db = SessionLocal()
 

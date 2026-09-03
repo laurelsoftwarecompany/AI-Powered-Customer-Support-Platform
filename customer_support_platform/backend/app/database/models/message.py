@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -37,6 +37,14 @@ class Message(Base):
 
     confidence: Mapped[float | None] = mapped_column(
         Float,
+        nullable=True
+    )
+
+    # Knowledge-base articles the AI grounded this answer in (RAG).
+    # List of {document_id, title, score, snippet}; null for non-AI messages
+    # and AI answers where retrieval found nothing above RAG_MIN_SCORE.
+    sources: Mapped[list | None] = mapped_column(
+        JSON(none_as_null=True),
         nullable=True
     )
 
