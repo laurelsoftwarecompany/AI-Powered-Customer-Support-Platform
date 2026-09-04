@@ -28,6 +28,3 @@ node_modules/
 Team A.pdf
 *.pdf
 
-# Mobile app (folder committed empty via .gitkeep)
-customer_support_platform/Mobile app/*
-!customer_support_platform/Mobile app/.gitkeep
