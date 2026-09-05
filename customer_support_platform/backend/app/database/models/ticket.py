@@ -51,6 +51,12 @@ class Ticket(Base):
         index=True
     )
 
+    conversation_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        index=True
+    )
+
     subject: Mapped[str] = mapped_column(
         String(255),
         nullable=False

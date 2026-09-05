@@ -98,7 +98,7 @@ class TicketRepository {
     ),
   ];
 
-  TicketRepository({required this.apiClient, this.useMock = true});
+  TicketRepository({required this.apiClient, this.useMock = false});
 
   Future<List<TicketModel>> fetchTickets() async {
     if (useMock) {

@@ -1,6 +1,11 @@
 from functools import cached_property
+from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_SQLITE_PATH = (BACKEND_DIR / "customer_support.db").resolve().as_posix()
 
 
 class Settings(BaseSettings):
@@ -12,10 +17,19 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Database
     # ------------------------------------------------------------------
-    # Defaults to a local SQLite file so the backend runs with zero setup.
+    # Defaults to a local SQLite file anchored to backend root.
     # Point at PostgreSQL (with pgvector) for production:
     #   postgresql+psycopg2://user:pass@host:5432/customer_support
-    DATABASE_URL: str = "sqlite:///./customer_support.db"
+    DATABASE_URL: str = f"sqlite:///{DEFAULT_SQLITE_PATH}"
+
+    @field_validator("DATABASE_URL", mode="after")
+    @classmethod
+    def resolve_sqlite_path(cls, v: str) -> str:
+        if v.startswith("sqlite:///./"):
+            rel = v.removeprefix("sqlite:///./")
+            abs_path = (BACKEND_DIR / rel).resolve().as_posix()
+            return f"sqlite:///{abs_path}"
+        return v
 
     # ------------------------------------------------------------------
     # Auth

@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../auth/data/user_model.dart';
+import '../../tickets/data/ticket_model.dart';
 import '../data/chat_model.dart';
 import '../data/chat_repository.dart';
 
@@ -8,14 +10,16 @@ class AIChatScreen extends StatefulWidget {
   final UserModel? user;
   final VoidCallback onBack;
   final VoidCallback onLogTicket;
-  final bool isLiveAgent; // <-- Add this field
+  final Function(String ticketId)? onOpenTicket;
+  final bool isLiveAgent;
 
   const AIChatScreen({
     super.key,
     this.user,
     required this.onBack,
     required this.onLogTicket,
-    this.isLiveAgent = false, // <-- Add this parameter with default false
+    this.onOpenTicket,
+    this.isLiveAgent = false,
   });
 
   @override
@@ -30,6 +34,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
   List<ChatMessage> _messages = [];
   bool _isLoading = false;
   String _status = 'active'; // 'active' or 'agent_takeover'
+  Timer? _pollTimer;
 
   final List<String> _quickPrompts = [
     'How can I reset my password?',
@@ -44,6 +49,17 @@ class _AIChatScreenState extends State<AIChatScreen> {
     _repository = context.read<ChatRepository>();
     _messages = _repository.getInitialMessages(widget.user?.name ?? 'Customer');
     _restoreHistory();
+    if (widget.isLiveAgent) {
+      _connectLiveAgent();
+    }
+  }
+
+  @override
+  void didUpdateWidget(AIChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isLiveAgent && !oldWidget.isLiveAgent) {
+      _connectLiveAgent();
+    }
   }
 
   /// Replay the existing conversation (including anything an agent replied
@@ -58,7 +74,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
       setState(() {
         _messages = history;
         _isLoading = false;
-        if (_repository.handedToHuman) _status = 'agent_takeover';
+        if (_repository.handedToHuman) {
+          _status = 'agent_takeover';
+          _startPolling();
+        }
       });
       _scrollToBottom();
     } catch (_) {
@@ -66,8 +85,45 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
   }
 
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (!mounted || _status != 'agent_takeover') return;
+      final latest =
+          await _repository.pollMessages(widget.user?.name ?? 'Customer');
+      if (latest != null && latest.length > _messages.length && mounted) {
+        setState(() {
+          _messages = latest;
+        });
+        _scrollToBottom();
+      }
+    });
+  }
+
+  Future<void> _connectLiveAgent() async {
+    setState(() {
+      _isLoading = true;
+      _status = 'agent_takeover';
+    });
+    try {
+      final reply = await _repository.requestLiveAgentSession();
+      if (!mounted) return;
+      setState(() {
+        _messages.add(reply);
+        _isLoading = false;
+        _status = 'agent_takeover';
+      });
+      _startPolling();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
+    _scrollToBottom();
+  }
+
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -111,7 +167,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
       setState(() {
         _messages.add(botReply);
         _isLoading = false;
-        if (_repository.handedToHuman) _status = 'agent_takeover';
+        if (_repository.handedToHuman) {
+          _status = 'agent_takeover';
+          _startPolling();
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -135,7 +194,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
       setState(() {
         _messages.add(reply);
         _isLoading = false;
-        if (_repository.handedToHuman) _status = 'agent_takeover';
+        if (_repository.handedToHuman) {
+          _status = 'agent_takeover';
+          _startPolling();
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -295,27 +357,104 @@ class _AIChatScreenState extends State<AIChatScreen> {
       ),
       body: Column(
         children: [
-          // Agent takeover banner
+          // Agent takeover banner with linked ticket shortcut
           if (_status == 'agent_takeover')
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              color: const Color(0xFFFEF3C7),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEF3C7),
+                border: Border(
+                  bottom: BorderSide(color: Color(0xFFFDE68A), width: 1),
+                ),
+              ),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.headset_mic_rounded,
-                    color: Color(0xFFD97706),
-                    size: 16,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Handed to our support team — an agent will reply here.',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF92400E),
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFDE68A),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.support_agent_rounded,
+                      color: Color(0xFFB45309),
+                      size: 20,
                     ),
                   ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Text(
+                              'Live Specialist Support',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF92400E),
+                              ),
+                            ),
+                            SizedBox(width: 5),
+                            Icon(
+                              Icons.circle,
+                              size: 6,
+                              color: Color(0xFF10B981),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          _repository.linkedTicketId != null
+                              ? 'Ticket #${TicketModel.numberFor(_repository.linkedTicketId!)} linked · Replies sync live'
+                              : 'Connected to human queue. Replies will appear here.',
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            color: Color(0xFFB45309),
+                            height: 1.25,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_repository.linkedTicketId != null &&
+                      widget.onOpenTicket != null)
+                    InkWell(
+                      onTap: () => widget.onOpenTicket!(
+                        _repository.linkedTicketId!.toString(),
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD97706),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'View Ticket',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(width: 3),
+                            Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 11,
+                              color: Colors.white,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

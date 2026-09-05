@@ -24,6 +24,7 @@ export interface User {
 export interface Ticket {
   id: number;
   customer_id: number;
+  conversation_id?: number | null;
   assigned_agent_id: number | null;
   subject: string;
   description: string;
@@ -49,6 +50,7 @@ export interface Conversation {
   customer_id: number;
   status: string;
   ai_active: boolean;
+  ticket_id?: number | null;
   created_at: string;
   updated_at: string;
 }

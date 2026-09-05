@@ -45,6 +45,24 @@ class User(Base):
         nullable=False
     )
 
+    phone: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        default=None
+    )
+
+    location: Mapped[str | None] = mapped_column(
+        String(150),
+        nullable=True,
+        default=None
+    )
+
+    organization: Mapped[str | None] = mapped_column(
+        String(150),
+        nullable=True,
+        default=None
+    )
+
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         default=True,

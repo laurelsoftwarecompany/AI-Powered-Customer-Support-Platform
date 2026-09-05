@@ -10,6 +10,7 @@ import 'features/auth/data/auth_repository.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/chat/data/chat_repository.dart';
 import 'features/dashboard/presentation/main_navigation_screen.dart';
+import 'features/knowledge/data/knowledge_repository.dart';
 import 'features/tickets/bloc/ticket_bloc.dart';
 import 'features/tickets/bloc/ticket_event.dart';
 import 'features/tickets/data/ticket_repository.dart';
@@ -39,11 +40,16 @@ void main() {
     useMock: useMockData,
   );
 
+  final knowledgeRepository = KnowledgeRepository(
+    apiClient: apiClient,
+  );
+
   runApp(
     CustomerSupportApp(
       authRepository: authRepository,
       ticketRepository: ticketRepository,
       chatRepository: chatRepository,
+      knowledgeRepository: knowledgeRepository,
     ),
   );
 }
@@ -52,12 +58,14 @@ class CustomerSupportApp extends StatelessWidget {
   final AuthRepository authRepository;
   final TicketRepository ticketRepository;
   final ChatRepository chatRepository;
+  final KnowledgeRepository knowledgeRepository;
 
   const CustomerSupportApp({
     super.key,
     required this.authRepository,
     required this.ticketRepository,
     required this.chatRepository,
+    required this.knowledgeRepository,
   });
 
   @override
@@ -67,6 +75,7 @@ class CustomerSupportApp extends StatelessWidget {
         RepositoryProvider<AuthRepository>.value(value: authRepository),
         RepositoryProvider<TicketRepository>.value(value: ticketRepository),
         RepositoryProvider<ChatRepository>.value(value: chatRepository),
+        RepositoryProvider<KnowledgeRepository>.value(value: knowledgeRepository),
       ],
       child: MultiBlocProvider(
         providers: [

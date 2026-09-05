@@ -90,6 +90,11 @@ export default function ConversationsPage() {
                     </p>
                     <p className="font-mono text-[11px] text-ink-faint">
                       {convNo(c.id)}
+                      {c.ticket_id && (
+                        <span className="ml-2 font-sans font-medium text-brand">
+                          · Ticket TCK-{String(c.ticket_id).padStart(5, "0")}
+                        </span>
+                      )}
                     </p>
                   </div>
                   <span

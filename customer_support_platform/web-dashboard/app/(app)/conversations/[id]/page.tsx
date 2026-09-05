@@ -89,17 +89,27 @@ export default function ConversationDetailPage({
         title={customer?.name ?? `Customer #${c.customer_id}`}
         subtitle={`${convNo(c.id)} · started ${dateTime(c.created_at)}`}
         actions={
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] font-medium",
-              c.ai_active
-                ? "bg-brand-wash text-brand"
-                : "bg-st-waiting-wash text-st-waiting",
+          <div className="flex items-center gap-2">
+            {c.ticket_id && (
+              <Link
+                href={`/tickets/${c.ticket_id}`}
+                className="inline-flex items-center gap-1 rounded-md border border-brand/30 bg-brand-wash px-2.5 py-1 text-[12px] font-medium text-brand hover:bg-brand/15"
+              >
+                Linked Ticket TCK-{String(c.ticket_id).padStart(5, "0")} →
+              </Link>
             )}
-          >
-            {c.ai_active ? <Bot size={13} /> : <Headphones size={13} />}
-            {c.ai_active ? "AI handling" : "Agent handling"}
-          </span>
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] font-medium",
+                c.ai_active
+                  ? "bg-brand-wash text-brand"
+                  : "bg-st-waiting-wash text-st-waiting",
+              )}
+            >
+              {c.ai_active ? <Bot size={13} /> : <Headphones size={13} />}
+              {c.ai_active ? "AI handling" : "Agent handling"}
+            </span>
+          </div>
         }
       />
 
@@ -201,6 +211,21 @@ export default function ConversationDetailPage({
 
           {!c.ai_active && (
             <div className="border-t border-border p-4">
+              <div className="mb-2 flex items-center justify-between text-[11px] text-ink-faint">
+                <span>
+                  {c.ticket_id
+                    ? `Replies deliver live to customer app & mirror to Ticket #${c.ticket_id}`
+                    : "Replies deliver live to the customer's mobile app"}
+                </span>
+                {c.ticket_id && (
+                  <Link
+                    href={`/tickets/${c.ticket_id}`}
+                    className="text-brand hover:underline font-medium"
+                  >
+                    Open Ticket View →
+                  </Link>
+                )}
+              </div>
               <Textarea
                 rows={3}
                 value={draft}

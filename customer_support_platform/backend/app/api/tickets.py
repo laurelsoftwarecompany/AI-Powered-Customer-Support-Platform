@@ -12,6 +12,8 @@ from app.database.models.ticket import (
     TicketPriority,
 )
 from app.database.models.ticket_message import TicketMessage
+from app.database.models.conversation import Conversation
+from app.database.models.message import Message
 from app.database.models.user import User, UserRole
 from app.api.auth import get_current_user
 
@@ -31,6 +33,7 @@ class TicketCreate(BaseModel):
     description: str = Field(..., min_length=1)
     category: str = Field(..., min_length=1, max_length=100)
     priority: TicketPriority = TicketPriority.MEDIUM
+    conversation_id: int | None = None
 
 
 class TicketMessageCreate(BaseModel):
@@ -43,6 +46,39 @@ class TicketUpdate(BaseModel):
     assigned_agent_id: int | None = None
 
 
+ALLOWED_STATUS_TRANSITIONS: dict[TicketStatus, set[TicketStatus]] = {
+    TicketStatus.OPEN: {
+        TicketStatus.OPEN,
+        TicketStatus.IN_PROGRESS,
+        TicketStatus.WAITING_FOR_CUSTOMER,
+        TicketStatus.RESOLVED,
+        TicketStatus.CLOSED,
+    },
+    TicketStatus.IN_PROGRESS: {
+        TicketStatus.IN_PROGRESS,
+        TicketStatus.WAITING_FOR_CUSTOMER,
+        TicketStatus.RESOLVED,
+        TicketStatus.OPEN,
+        TicketStatus.CLOSED,
+    },
+    TicketStatus.WAITING_FOR_CUSTOMER: {
+        TicketStatus.WAITING_FOR_CUSTOMER,
+        TicketStatus.IN_PROGRESS,
+        TicketStatus.RESOLVED,
+        TicketStatus.OPEN,
+        TicketStatus.CLOSED,
+    },
+    TicketStatus.RESOLVED: {
+        TicketStatus.RESOLVED,
+        TicketStatus.CLOSED,
+        TicketStatus.OPEN,
+    },
+    TicketStatus.CLOSED: {
+        TicketStatus.CLOSED,
+    },
+}
+
+
 # ============================================================
 # CUSTOMER — CREATE TICKET
 # ============================================================
@@ -53,36 +89,56 @@ def create_ticket(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    ticket = Ticket(
-        customer_id=current_user.id,
-        subject=ticket_data.subject,
-        description=ticket_data.description,
-        category=ticket_data.category,
-        priority=ticket_data.priority,
-        status=TicketStatus.OPEN
-    )
+    try:
+        ticket = Ticket(
+            customer_id=current_user.id,
+            conversation_id=ticket_data.conversation_id,
+            subject=ticket_data.subject,
+            description=ticket_data.description,
+            category=ticket_data.category,
+            priority=ticket_data.priority,
+            status=TicketStatus.OPEN
+        )
 
-    db.add(ticket)
-    db.commit()
-    db.refresh(ticket)
+        db.add(ticket)
+        db.flush()
 
-    # Create the first ticket message from the customer
-    initial_message = TicketMessage(
-        ticket_id=ticket.id,
-        sender_id=current_user.id,
-        sender_type="customer",
-        content=ticket_data.description,
-        is_internal=False
-    )
+        if ticket_data.conversation_id:
+            conv = (
+                db.query(Conversation)
+                .filter(Conversation.id == ticket_data.conversation_id)
+                .first()
+            )
+            if conv:
+                conv.ticket_id = ticket.id
+                conv.ai_active = False
+                conv.status = "human_support"
+                conv.updated_at = datetime.utcnow()
 
-    db.add(initial_message)
-    db.commit()
-    db.refresh(initial_message)
+        # Create the first ticket message from the customer atomically
+        initial_message = TicketMessage(
+            ticket_id=ticket.id,
+            sender_id=current_user.id,
+            sender_type="customer",
+            content=ticket_data.description,
+            is_internal=False
+        )
 
-    return {
-        "ticket": ticket,
-        "message": initial_message
-    }
+        db.add(initial_message)
+        db.commit()
+        db.refresh(ticket)
+        db.refresh(initial_message)
+
+        return {
+            "ticket": ticket,
+            "message": initial_message
+        }
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create ticket"
+        ) from exc
 
 
 # ============================================================
@@ -242,6 +298,22 @@ def add_ticket_message(
 
     db.add(ticket_message)
 
+    # Mirror into conversation if linked so the live chat is always in sync
+    if ticket.conversation_id:
+        conversation = (
+            db.query(Conversation)
+            .filter(Conversation.id == ticket.conversation_id)
+            .first()
+        )
+        if conversation:
+            conv_message = Message(
+                conversation_id=conversation.id,
+                sender_type=sender_type,
+                content=message_data.content,
+            )
+            db.add(conv_message)
+            conversation.updated_at = datetime.utcnow()
+
     # If customer replies to a resolved/closed ticket,
     # reopen it.
     if current_user.role == UserRole.CUSTOMER:
@@ -293,6 +365,12 @@ def update_ticket(
         )
 
     if ticket_data.status is not None:
+        allowed = ALLOWED_STATUS_TRANSITIONS.get(ticket.status, {ticket.status})
+        if ticket_data.status not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status transition from {ticket.status.value} to {ticket_data.status.value}",
+            )
         ticket.status = ticket_data.status
 
     if ticket_data.priority is not None:

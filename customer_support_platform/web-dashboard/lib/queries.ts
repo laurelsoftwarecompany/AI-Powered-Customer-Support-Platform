@@ -186,7 +186,7 @@ export function useSetUserStatus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, active }: { id: number; active: boolean }) =>
-      api.patch(`/admin/users/${id}/status?is_active=${active}`, {}),
+      api.patch(`/admin/users/${id}/status`, { is_active: active }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
       qc.invalidateQueries({ queryKey: ["directory"] });
@@ -198,7 +198,7 @@ export function useSetUserRole() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, role }: { id: number; role: string }) =>
-      api.patch(`/admin/users/${id}/role?role=${role}`, {}),
+      api.patch(`/admin/users/${id}/role`, { role }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
       qc.invalidateQueries({ queryKey: ["directory"] });

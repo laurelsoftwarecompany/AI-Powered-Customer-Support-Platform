@@ -40,3 +40,22 @@ def mock_provider(monkeypatch):
     from app.config import settings
 
     monkeypatch.setattr(settings, "AI_PROVIDER", "mock")
+
+
+@pytest.fixture()
+def client():
+    """TestClient fixture for API integration tests."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limits():
+    """Ensure rate limit buckets are reset between test runs."""
+    from app.middleware import _limiter
+
+    _limiter.reset()
+    yield
+    _limiter.reset()

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../auth/bloc/auth_event.dart';
+import '../../auth/data/auth_repository.dart';
 import '../../auth/data/user_model.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -18,15 +19,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late String _currentName;
   late String _currentPhone;
   late String _currentLocation;
+  late String _currentOrg;
 
   @override
   void initState() {
     super.initState();
-    _currentName = (widget.user?.name.isNotEmpty ?? false)
-        ? widget.user!.name
-        : 'Alex Rivera';
-    _currentPhone = '+1 (555) 019-2834';
-    _currentLocation = 'Chicago, United States';
+    _populateUserData();
+  }
+
+  @override
+  void didUpdateWidget(ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.user != oldWidget.user && widget.user != null) {
+      _populateUserData();
+    }
+  }
+
+  void _populateUserData() {
+    _currentName = widget.user?.name ?? '';
+    _currentPhone = widget.user?.phone ?? '';
+    _currentLocation = widget.user?.location ?? '';
+    _currentOrg = widget.user?.organization ?? '';
   }
 
   // --- Modal: Edit Profile ---
@@ -34,144 +47,211 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final nameCtrl = TextEditingController(text: _currentName);
     final phoneCtrl = TextEditingController(text: _currentPhone);
     final locationCtrl = TextEditingController(text: _currentLocation);
+    final orgCtrl = TextEditingController(text: _currentOrg);
     final formKey = GlobalKey<FormState>();
+    bool isSaving = false;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE2E8F0),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  'Edit Profile Details',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildFieldLabel('Full Name'),
-                const SizedBox(height: 6),
-                _buildTextField(
-                  controller: nameCtrl,
-                  icon: Icons.person_outline_rounded,
-                  hint: 'Full Name',
-                  validator: (val) => val == null || val.trim().isEmpty
-                      ? 'Name cannot be empty'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                _buildFieldLabel('Phone Number'),
-                const SizedBox(height: 6),
-                _buildTextField(
-                  controller: phoneCtrl,
-                  icon: Icons.phone_outlined,
-                  hint: 'Phone Number',
-                  keyboardType: TextInputType.phone,
-                  validator: (val) => val == null || val.trim().length < 7
-                      ? 'Enter a valid phone number'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                _buildFieldLabel('City / Country'),
-                const SizedBox(height: 6),
-                _buildTextField(
-                  controller: locationCtrl,
-                  icon: Icons.location_on_outlined,
-                  hint: 'City, Country',
-                  validator: (val) => val == null || val.trim().isEmpty
-                      ? 'Location cannot be empty'
-                      : null,
-                ),
-                const SizedBox(height: 20),
-                Row(
+      builder: (ctx) => StatefulBuilder(
+        builder: (modalContext, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          side: const BorderSide(color: Color(0xFFCBD5E1)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Cancel',
-                          style: TextStyle(
-                            color: Color(0xFF64748B),
-                            fontWeight: FontWeight.w600,
-                          ),
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE2E8F0),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          if (formKey.currentState?.validate() ?? false) {
-                            setState(() {
-                              _currentName = nameCtrl.text.trim();
-                              _currentPhone = phoneCtrl.text.trim();
-                              _currentLocation = locationCtrl.text.trim();
-                            });
-                            Navigator.pop(ctx);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Text(
-                                  'Profile details updated successfully!',
-                                ),
-                                backgroundColor: const Color(0xFF10B981),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Edit Profile Details',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildFieldLabel('Full Name'),
+                    const SizedBox(height: 6),
+                    _buildTextField(
+                      controller: nameCtrl,
+                      icon: Icons.person_outline_rounded,
+                      hint: 'Full Name',
+                      validator: (val) => val == null || val.trim().isEmpty
+                          ? 'Name cannot be empty'
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFieldLabel('Organization / Company'),
+                    const SizedBox(height: 6),
+                    _buildTextField(
+                      controller: orgCtrl,
+                      icon: Icons.business_outlined,
+                      hint: 'Organization or Company Name',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFieldLabel('Phone Number'),
+                    const SizedBox(height: 6),
+                    _buildTextField(
+                      controller: phoneCtrl,
+                      icon: Icons.phone_outlined,
+                      hint: '+1 (555) 000-0000',
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFieldLabel('City / Country'),
+                    const SizedBox(height: 6),
+                    _buildTextField(
+                      controller: locationCtrl,
+                      icon: Icons.location_on_outlined,
+                      hint: 'e.g. Chicago, United States',
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              side: const BorderSide(color: Color(0xFFCBD5E1)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                            );
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF4F46E5),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(
+                                color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         ),
-                        child: const Text(
-                          'Save Changes',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: isSaving
+                                ? null
+                                : () async {
+                                    if (formKey.currentState?.validate() ?? false) {
+                                      setModalState(() => isSaving = true);
+                                      final messenger = ScaffoldMessenger.of(context);
+                                      try {
+                                        final authRepo =
+                                            context.read<AuthRepository>();
+                                        final authBloc =
+                                            context.read<AuthBloc>();
+                                        final updated =
+                                            await authRepo.updateProfile(
+                                          name: nameCtrl.text.trim(),
+                                          phone: phoneCtrl.text.trim(),
+                                          location: locationCtrl.text.trim(),
+                                          organization: orgCtrl.text.trim(),
+                                        );
+
+                                        if (!mounted) return;
+                                        setState(() {
+                                          _currentName = updated.name;
+                                          _currentPhone = updated.phone ?? '';
+                                          _currentLocation =
+                                              updated.location ?? '';
+                                          _currentOrg =
+                                              updated.organization ?? '';
+                                        });
+
+                                        authBloc.add(UpdateUserEvent(updated));
+
+                                        if (ctx.mounted) Navigator.pop(ctx);
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: const Text(
+                                              'Profile details updated successfully!',
+                                            ),
+                                            backgroundColor:
+                                                const Color(0xFF10B981),
+                                            behavior:
+                                                SnackBarBehavior.floating,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        if (ctx.mounted) {
+                                          setModalState(() => isSaving = false);
+                                          ScaffoldMessenger.of(ctx).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                e.toString().replaceAll(
+                                                      'Exception: ',
+                                                      '',
+                                                    ),
+                                              ),
+                                              backgroundColor:
+                                                  const Color(0xFFDC2626),
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4F46E5),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: isSaving
+                                ? const SizedBox(
+                                    height: 18,
+                                    width: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Save Changes',
+                                    style: TextStyle(fontWeight: FontWeight.w700),
+                                  ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -179,7 +259,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- Modal: Change Password with Strong Rules ---
   // --- Modal: Change Password with Current Password Verification ---
   void _openChangePasswordModal() {
     final currentPassCtrl = TextEditingController();
@@ -195,6 +274,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     bool hasUppercase = false;
     bool hasDigits = false;
     bool hasSpecialChar = false;
+    bool isUpdating = false;
 
     showModalBottomSheet(
       context: context,
@@ -378,7 +458,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: () => Navigator.pop(ctx),
+                              onPressed: isUpdating ? null : () => Navigator.pop(ctx),
                               style: OutlinedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 12,
@@ -402,48 +482,91 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: ElevatedButton(
-                              onPressed: () {
-                                final isStrong =
-                                    hasMinLength &&
-                                    hasUppercase &&
-                                    hasDigits &&
-                                    hasSpecialChar;
+                              onPressed: isUpdating
+                                  ? null
+                                  : () async {
+                                      final isStrong =
+                                          hasMinLength &&
+                                          hasUppercase &&
+                                          hasDigits &&
+                                          hasSpecialChar;
 
-                                if (!isStrong) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: const Text(
-                                        'Please satisfy all 4 new password rules',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      backgroundColor: const Color(0xFFDC2626),
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
+                                      if (!isStrong) {
+                                        ScaffoldMessenger.of(ctx).showSnackBar(
+                                          SnackBar(
+                                            content: const Text(
+                                              'Please satisfy all 4 new password rules',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            backgroundColor:
+                                                const Color(0xFFDC2626),
+                                            behavior: SnackBarBehavior.floating,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
 
-                                if (formKey.currentState?.validate() ?? false) {
-                                  Navigator.pop(ctx);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: const Text(
-                                        'Password updated securely!',
-                                      ),
-                                      backgroundColor: const Color(0xFF10B981),
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                  );
-                                }
-                              },
+                                      if (formKey.currentState?.validate() ?? false) {
+                                        setModalState(() => isUpdating = true);
+                                        final messenger = ScaffoldMessenger.of(context);
+                                        try {
+                                          final authRepo =
+                                              context.read<AuthRepository>();
+                                          await authRepo.changePassword(
+                                            currentPassword:
+                                                currentPassCtrl.text,
+                                            newPassword: newPassCtrl.text,
+                                          );
+
+                                          if (ctx.mounted) Navigator.pop(ctx);
+                                          messenger.showSnackBar(
+                                            SnackBar(
+                                              content: const Text(
+                                                'Password updated securely!',
+                                              ),
+                                              backgroundColor:
+                                                  const Color(0xFF10B981),
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                            ),
+                                          );
+                                        } catch (e) {
+                                          if (ctx.mounted) {
+                                            setModalState(
+                                                () => isUpdating = false);
+                                            ScaffoldMessenger.of(ctx)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  e.toString().replaceAll(
+                                                        'Exception: ',
+                                                        '',
+                                                      ),
+                                                ),
+                                                backgroundColor:
+                                                    const Color(0xFFDC2626),
+                                                behavior:
+                                                    SnackBarBehavior.floating,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      }
+                                    },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF4F46E5),
                                 foregroundColor: Colors.white,
@@ -455,10 +578,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                               ),
-                              child: const Text(
-                                'Update Password',
-                                style: TextStyle(fontWeight: FontWeight.w700),
-                              ),
+                              child: isUpdating
+                                  ? const SizedBox(
+                                      height: 18,
+                                      width: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Update Password',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
                             ),
                           ),
                         ],
@@ -482,6 +616,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final displayEmail = (widget.user?.email.isNotEmpty ?? false)
         ? widget.user!.email
         : 'customer@workspace.com';
+
+    // Format role dynamically
+    String displayRole;
+    switch (widget.user?.role.toLowerCase()) {
+      case 'admin':
+        displayRole = 'Administrator';
+        break;
+      case 'agent':
+        displayRole = 'Support Agent';
+        break;
+      case 'customer':
+      default:
+        displayRole = 'Customer';
+        break;
+    }
+
+    final displayOrg = _currentOrg.isNotEmpty
+        ? _currentOrg
+        : (widget.user?.organization?.isNotEmpty ?? false
+            ? widget.user!.organization!
+            : 'Personal Account');
+
+    final displayPhone = _currentPhone.isNotEmpty ? _currentPhone : 'Not provided';
+    final displayLocation =
+        _currentLocation.isNotEmpty ? _currentLocation : 'Not provided';
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -546,7 +705,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _currentName,
+                          _currentName.isNotEmpty ? _currentName : 'Customer',
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
@@ -576,18 +735,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: const Color(0xFFA7F3D0)),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
+                              const Icon(
                                 Icons.check_circle_rounded,
                                 size: 11,
                                 color: Color(0xFF059669),
                               ),
-                              SizedBox(width: 4),
+                              const SizedBox(width: 4),
                               Text(
-                                'Active Customer Account',
-                                style: TextStyle(
+                                'Active $displayRole Account',
+                                style: const TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                   color: Color(0xFF047857),
@@ -689,17 +848,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   _buildInfoRow(
                     'Organization',
-                    'Enterprise Customer',
+                    displayOrg,
                     isFirst: true,
                   ),
                   const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                  _buildInfoRow('Role', 'Admin', valueColor: primaryIndigo),
+                  _buildInfoRow('Role', displayRole, valueColor: primaryIndigo),
                   const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                  _buildInfoRow('Phone', _currentPhone),
+                  _buildInfoRow('Phone', displayPhone),
                   const Divider(height: 1, color: Color(0xFFF1F5F9)),
                   _buildInfoRow(
                     'City / Country',
-                    _currentLocation,
+                    displayLocation,
                     isLast: true,
                   ),
                 ],
@@ -731,7 +890,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     SizedBox(width: 6),
                     Text(
-                      'Fade Out',
+                      'Sign Out',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,

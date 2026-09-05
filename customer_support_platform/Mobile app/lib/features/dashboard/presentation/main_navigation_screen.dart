@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../../auth/bloc/auth_state.dart';
 import '../../auth/data/user_model.dart';
 import '../../tickets/presentation/create_ticket_screen.dart';
 import '../../tickets/presentation/ticket_list_screen.dart';
@@ -23,6 +26,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
   bool _isLiveAgentMode = false;
+  String? _selectedTicketId;
 
   late AnimationController _animController;
 
@@ -45,30 +49,42 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   Widget build(BuildContext context) {
     const primaryPurple = Color(0xFF4F46E5);
 
+    final authState = context.watch<AuthBloc>().state;
+    final currentUser =
+        (authState is Authenticated) ? authState.user : widget.user;
+
     final screens = [
       DashboardContent(
-        user: widget.user,
+        user: currentUser,
         onNavigateTab: (index) => setState(() {
           _isLiveAgentMode = false;
           _currentIndex = index;
         }),
       ),
       AIChatScreen(
-        user: widget.user,
+        user: currentUser,
         isLiveAgent: _isLiveAgentMode,
         onBack: () => setState(() {
           _isLiveAgentMode = false;
           _currentIndex = 0;
         }),
         onLogTicket: () => setState(() => _currentIndex = 2),
+        onOpenTicket: (ticketId) => setState(() {
+          _selectedTicketId = ticketId;
+          _isLiveAgentMode = false;
+          _currentIndex = 3;
+        }),
       ),
       CreateTicketScreen(
         onBack: () => setState(() => _currentIndex = 0),
         onSuccess: () => setState(() => _currentIndex = 3),
       ),
       TicketListScreen(
+        key: ValueKey(_selectedTicketId ?? 'ticket_list'),
+        initialTicketId: _selectedTicketId,
         onNavigateTab: (index) => setState(() {
-          _isLiveAgentMode = false;
+          _selectedTicketId = null;
+          _isLiveAgentMode = (index == 1);
           _currentIndex = index;
         }),
       ),
@@ -77,7 +93,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         onNavigateTab: (index) => setState(() => _currentIndex = index),
       ),
       ProfileScreen(
-        user: widget.user,
+        user: currentUser,
         onBack: () => setState(() => _currentIndex = 0),
       ),
       KnowledgeScreen(
@@ -87,7 +103,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     ];
 
     return Scaffold(
-      body: SafeArea(bottom: false, child: screens[_currentIndex]),
+      body: SafeArea(
+        bottom: false,
+        child: IndexedStack(
+          index: _currentIndex,
+          children: screens,
+        ),
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,

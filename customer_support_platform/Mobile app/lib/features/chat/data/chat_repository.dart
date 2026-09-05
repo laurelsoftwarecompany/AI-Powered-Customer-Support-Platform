@@ -16,15 +16,19 @@ class ChatRepository {
   final bool useMock;
 
   int? _conversationId;
+  int? _linkedTicketId;
   bool _handedToHuman = false;
 
-  ChatRepository({this.apiClient, this.useMock = true});
+  ChatRepository({this.apiClient, this.useMock = false});
 
   /// True once the assistant has escalated and a human owns the conversation.
   bool get handedToHuman => _handedToHuman;
+  int? get linkedTicketId => _linkedTicketId;
+  int? get conversationId => _conversationId;
 
   void reset() {
     _conversationId = null;
+    _linkedTicketId = null;
     _handedToHuman = false;
   }
 
@@ -48,6 +52,7 @@ class ChatRepository {
       final id = latest['id'] as int;
       _conversationId = id;
       _handedToHuman = latest['ai_active'] == false;
+      _linkedTicketId = latest['ticket_id'] as int?;
 
       final history = await dio.get('/conversations/$id/messages');
       final rows = history.data;
@@ -104,6 +109,23 @@ class ChatRepository {
     ];
   }
 
+  /// Poll new messages without replacing greeting or throwing errors.
+  Future<List<ChatMessage>?> pollMessages(String userName) async {
+    if (useMock || apiClient == null || _conversationId == null) return null;
+    try {
+      final dio = _requireClient();
+      final history = await dio.get('/conversations/$_conversationId/messages');
+      final rows = history.data;
+      if (rows is! List) return null;
+      final messages = rows
+          .map((r) => _historyMessage(Map<String, dynamic>.from(r)))
+          .toList();
+      return [...getInitialMessages(userName), ...messages];
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ---------------------------------------------------------------- sending
 
   Future<ChatMessage> sendUserMessage(String query) async {
@@ -129,9 +151,7 @@ class ChatRepository {
     }
   }
 
-  /// Ask for a person. There is no customer-initiated takeover endpoint - the
-  /// assistant escalates on its own - so this sends an explicit request
-  /// through the normal pipeline and reports what actually happened.
+  /// Explicitly transition to live agent support via the backend handoff endpoint.
   Future<ChatMessage> requestHumanHandoff() async {
     if (useMock) {
       _handedToHuman = true;
@@ -146,9 +166,79 @@ class ChatRepository {
       );
     }
 
-    return sendUserMessage(
-      'I would like to speak with a human support agent about this.',
-    );
+    final dio = _requireClient();
+    try {
+      final convId = await _ensureConversation();
+      final resp = await dio.post('/conversations/$convId/request-agent');
+      final body = Map<String, dynamic>.from(resp.data as Map);
+      _handedToHuman = true;
+      final ticket = body['ticket'];
+      if (ticket is Map) {
+        _linkedTicketId = ticket['id'] as int?;
+      }
+      final ticketNum =
+          _linkedTicketId != null ? TicketModel.numberFor(_linkedTicketId!) : '';
+
+      return ChatMessage(
+        id: 'handoff_${DateTime.now().millisecondsSinceEpoch}',
+        sender: 'agent',
+        senderName: 'Support Team',
+        text:
+            'You have been connected with our live support team. '
+            '${ticketNum.isNotEmpty ? 'Ticket $ticketNum is open for this request. ' : ''}'
+            'An agent will reply to your messages directly here.',
+        timestamp: DateTime.now(),
+      );
+    } catch (_) {
+      return sendUserMessage(
+        'I would like to speak with a human support agent about this.',
+      );
+    }
+  }
+
+  /// Connect or resume a live agent session directly from the Live Agent nav pill.
+  Future<ChatMessage> requestLiveAgentSession() async {
+    if (useMock) {
+      _handedToHuman = true;
+      return ChatMessage(
+        id: 'agent_${DateTime.now().millisecondsSinceEpoch}',
+        sender: 'agent',
+        senderName: 'Support Team',
+        text:
+            'Connected to live agent support. An agent will assist you shortly.',
+        timestamp: DateTime.now(),
+      );
+    }
+
+    final dio = _requireClient();
+    try {
+      final resp = await dio.post('/conversations/live-agent/session');
+      final body = Map<String, dynamic>.from(resp.data as Map);
+      final conv = Map<String, dynamic>.from(body['conversation'] as Map);
+      _conversationId = conv['id'] as int;
+      _handedToHuman = true;
+      final ticket = body['ticket'];
+      if (ticket is Map) {
+        _linkedTicketId = ticket['id'] as int?;
+      }
+      final ticketNum =
+          _linkedTicketId != null ? TicketModel.numberFor(_linkedTicketId!) : '';
+
+      return ChatMessage(
+        id: 'live_agent_${DateTime.now().millisecondsSinceEpoch}',
+        sender: 'agent',
+        senderName: 'Support Team',
+        text:
+            'You are connected to our Live Support Team. '
+            '${ticketNum.isNotEmpty ? 'Ticket $ticketNum is open for this session. ' : ''}'
+            'A specialist will assist you shortly.',
+        timestamp: DateTime.now(),
+      );
+    } on DioException catch (e) {
+      throw Exception(
+        _errorMessage(e, 'Failed to connect to live support agent.'),
+      );
+    }
   }
 
   // ---------------------------------------------------------------- helpers
@@ -200,9 +290,9 @@ class ChatRepository {
 
     final ticket = body['ticket'];
     if (ticket != null) {
-      final number = TicketModel.numberFor(
-        Map<String, dynamic>.from(ticket as Map)['id'],
-      );
+      final ticketMap = Map<String, dynamic>.from(ticket as Map);
+      _linkedTicketId = ticketMap['id'] as int?;
+      final number = TicketModel.numberFor(ticketMap['id']);
       text =
           '$text\n\nI\'ve passed this to our support team — ticket $number is '
           'now open and an agent will follow up.';

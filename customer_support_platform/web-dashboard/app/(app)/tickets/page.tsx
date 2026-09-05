@@ -193,6 +193,11 @@ export default function TicketsPage() {
                         </span>
                         <span className="text-[11px] text-ink-faint">
                           {titleCase(t.category)}
+                          {t.conversation_id && (
+                            <span className="ml-2 font-sans font-medium text-brand">
+                              · Chat #{t.conversation_id}
+                            </span>
+                          )}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 text-ink-soft">

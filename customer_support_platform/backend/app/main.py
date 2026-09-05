@@ -7,6 +7,11 @@ from app.config import settings
 from app.database.base import Base
 from app.database.connection import engine
 import app.database.models  # noqa: F401  (registers every model on Base.metadata)
+from app.middleware import (
+    RateLimitMiddleware,
+    SecurityHeadersMiddleware,
+    setup_error_handlers,
+)
 
 from app.api.users import router as users_router
 from app.api.auth import router as auth_router
@@ -36,6 +41,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ============================================================
+# SECURITY & ERROR HANDLING MIDDLEWARE
+# ============================================================
+
+setup_error_handlers(app)
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
 # ============================================================
 # CORS

@@ -119,7 +119,7 @@ def _validate_intent(intent) -> str:
     return intent if intent in ALLOWED_INTENTS else "general_support"
 
 
-def _parse(raw: str) -> dict | None:
+def _parse(raw: str, user_message: str = "") -> dict | None:
     raw = _clean(raw)
     if not raw:
         return None
@@ -148,13 +148,33 @@ def _parse(raw: str) -> dict | None:
 
     intent = _validate_intent(parsed.get("intent"))
 
+    # Explicit request to reach a human agent or representative
+    wants_human = False
+    if user_message:
+        msg_lower = user_message.lower()
+        wants_human = any(
+            trigger in msg_lower
+            for trigger in (
+                "human",
+                "agent",
+                "live support",
+                "person",
+                "representative",
+                "specialist",
+                "speak with someone",
+                "talk to someone",
+                "talk to an agent",
+                "speak to an agent",
+                "connect me",
+            )
+        )
+
     return {
         "response": response.strip(),
         "intent": intent,
         "confidence": confidence,
-        # Hand off when the model is unsure, or whenever it's a complaint -
-        # an unhappy customer should always reach a human.
-        "should_escalate": confidence < CONFIDENCE_THRESHOLD or intent == "complaint",
+        # Hand off when the model is unsure, whenever it's a complaint, or when customer requests a person.
+        "should_escalate": confidence < CONFIDENCE_THRESHOLD or intent == "complaint" or wants_human,
     }
 
 

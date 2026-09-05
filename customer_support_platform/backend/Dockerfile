@@ -23,6 +23,11 @@ RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BA
 
 COPY . .
 
+# Create non-root user and grant ownership
+RUN groupadd -g 1001 appuser && useradd -u 1001 -g appuser -s /bin/bash -m appuser \
+    && chown -R appuser:appuser /opt/fastembed /app
+
+USER appuser
 EXPOSE 8000
 
 # Migrate, seed once if the database is empty, then serve.

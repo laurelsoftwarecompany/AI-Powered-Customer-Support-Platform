@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/ticket_bloc.dart';
@@ -28,6 +29,7 @@ class _TicketListScreenState extends State<TicketListScreen> {
   String _filterStatus = 'all';
   String _searchQuery = '';
   TicketModel? _activeTicket;
+  Timer? _ticketPollTimer;
 
   final List<String> _statusFilters = [
     'all',
@@ -61,6 +63,24 @@ class _TicketListScreenState extends State<TicketListScreen> {
       _loadingComments = true;
     });
     await _loadComments(ticket.id);
+    _startTicketPolling(ticket.id);
+  }
+
+  void _startTicketPolling(String ticketId) {
+    _ticketPollTimer?.cancel();
+    _ticketPollTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
+      if (!mounted || _activeTicket?.id != ticketId) return;
+      try {
+        final comments =
+            await context.read<TicketRepository>().fetchComments(ticketId);
+        if (mounted &&
+            (_commentsMap[ticketId]?.length != comments.length)) {
+          setState(() {
+            _commentsMap[ticketId] = comments;
+          });
+        }
+      } catch (_) {}
+    });
   }
 
   Future<void> _loadComments(String ticketId) async {
@@ -92,6 +112,7 @@ class _TicketListScreenState extends State<TicketListScreen> {
 
   @override
   void dispose() {
+    _ticketPollTimer?.cancel();
     _searchController.dispose();
     _replyController.dispose();
     _scrollController.dispose();
@@ -197,6 +218,10 @@ class _TicketListScreenState extends State<TicketListScreen> {
             );
             if (found.isNotEmpty) {
               _activeTicket = found.first;
+              if (!_commentsMap.containsKey(_activeTicket!.id)) {
+                _loadComments(_activeTicket!.id);
+                _startTicketPolling(_activeTicket!.id);
+              }
             }
           }
 
@@ -542,7 +567,10 @@ class _TicketListScreenState extends State<TicketListScreen> {
             size: 26,
             color: Color(0xFF0F172A),
           ),
-          onPressed: () => setState(() => _activeTicket = null),
+          onPressed: () {
+            _ticketPollTimer?.cancel();
+            setState(() => _activeTicket = null);
+          },
         ),
         titleSpacing: 0,
         title: Column(
@@ -586,6 +614,92 @@ class _TicketListScreenState extends State<TicketListScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Live Chat Sync Banner
+                  if (ticket.subject.contains('AI Escalation') ||
+                      ticket.subject.contains('Live Support') ||
+                      ticket.subject.contains('Live Chat'))
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEEF2FF),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFC7D2FE)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.forum_rounded,
+                            color: primaryIndigo,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Linked with Live Chat',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: primaryIndigo,
+                                  ),
+                                ),
+                                Text(
+                                  'Replies here sync live with customer chat.',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: Color(0xFF6366F1),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () {
+                              _ticketPollTimer?.cancel();
+                              setState(() => _activeTicket = null);
+                              widget.onNavigateTab?.call(1);
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: primaryIndigo,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Open Live Chat',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  SizedBox(width: 3),
+                                  Icon(
+                                    Icons.arrow_forward_rounded,
+                                    size: 11,
+                                    color: Colors.white,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                   // Metadata Card
                   Container(
                     padding: const EdgeInsets.all(14),

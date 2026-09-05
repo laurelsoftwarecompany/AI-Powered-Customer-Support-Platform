@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 
@@ -12,6 +14,16 @@ from app.database.models.ticket import (
     TicketPriority,
 )
 from app.database.models.conversation import Conversation
+
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
+
+
+class UserRoleUpdate(BaseModel):
+    role: UserRole
+
+
 router = APIRouter(
     prefix="/admin",
     tags=["Admin"]
@@ -99,7 +111,8 @@ def get_user(
 @router.patch("/users/{user_id}/status")
 def update_user_status(
     user_id: int,
-    is_active: bool,
+    body: UserStatusUpdate | None = None,
+    is_active: bool | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -107,6 +120,13 @@ def update_user_status(
         raise HTTPException(
             status_code=403,
             detail="Only administrators can change user status"
+        )
+
+    target_active = body.is_active if body is not None else is_active
+    if target_active is None:
+        raise HTTPException(
+            status_code=400,
+            detail="is_active must be provided in request body or query parameter"
         )
 
     user = (
@@ -121,13 +141,13 @@ def update_user_status(
             detail="User not found"
         )
 
-    if user.id == current_user.id and not is_active:
+    if user.id == current_user.id and not target_active:
         raise HTTPException(
             status_code=400,
             detail="Administrators cannot deactivate their own account"
         )
 
-    user.is_active = is_active
+    user.is_active = target_active
 
     db.commit()
     db.refresh(user)
@@ -151,7 +171,8 @@ def update_user_status(
 @router.patch("/users/{user_id}/role")
 def update_user_role(
     user_id: int,
-    role: UserRole,
+    body: UserRoleUpdate | None = None,
+    role: UserRole | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -159,6 +180,13 @@ def update_user_role(
         raise HTTPException(
             status_code=403,
             detail="Only administrators can change user roles"
+        )
+
+    target_role = body.role if body is not None else role
+    if target_role is None:
+        raise HTTPException(
+            status_code=400,
+            detail="role must be provided in request body or query parameter"
         )
 
     user = (
@@ -173,13 +201,13 @@ def update_user_role(
             detail="User not found"
         )
 
-    if user.id == current_user.id and role != UserRole.ADMIN:
+    if user.id == current_user.id and target_role != UserRole.ADMIN:
         raise HTTPException(
             status_code=400,
             detail="Administrators cannot remove their own administrator role"
         )
 
-    user.role = role
+    user.role = target_role
 
     db.commit()
     db.refresh(user)
@@ -456,46 +484,38 @@ def get_ai_analytics(
         )
 
     # --------------------------------------------------------
-    # AI MESSAGE STATISTICS
+    # AI MESSAGE STATISTICS (Database Aggregations)
     # --------------------------------------------------------
 
-    ai_messages = (
-        db.query(Message)
+    total_ai_messages = (
+        db.query(func.count(Message.id))
         .filter(Message.sender_type == "ai")
-        .all()
-    )
-
-    total_ai_messages = len(ai_messages)
-
-    confidence_values = [
-        message.confidence
-        for message in ai_messages
-        if message.confidence is not None
-    ]
+        .scalar()
+    ) or 0
 
     average_confidence = (
-        sum(confidence_values) / len(confidence_values)
-        if confidence_values
-        else 0
-    )
+        db.query(func.avg(Message.confidence))
+        .filter(Message.sender_type == "ai", Message.confidence.isnot(None))
+        .scalar()
+    ) or 0.0
 
-    low_confidence_messages = sum(
-        1
-        for confidence in confidence_values
-        if confidence < 0.70
-    )
+    low_confidence_messages = (
+        db.query(func.count(Message.id))
+        .filter(Message.sender_type == "ai", Message.confidence < 0.70)
+        .scalar()
+    ) or 0
 
     # --------------------------------------------------------
-    # INTENT DISTRIBUTION
+    # INTENT DISTRIBUTION (GROUP BY in SQL)
     # --------------------------------------------------------
 
-    intent_distribution = {}
-
-    for message in ai_messages:
-        if message.intent:
-            intent_distribution[message.intent] = (
-                intent_distribution.get(message.intent, 0) + 1
-            )
+    intent_rows = (
+        db.query(Message.intent, func.count(Message.id))
+        .filter(Message.sender_type == "ai", Message.intent.isnot(None))
+        .group_by(Message.intent)
+        .all()
+    )
+    intent_distribution = {intent: count for intent, count in intent_rows if intent}
 
     # --------------------------------------------------------
     # CONVERSATION STATISTICS
@@ -518,13 +538,13 @@ def get_ai_analytics(
     escalation_rate = (
         human_support_conversations / total_conversations
         if total_conversations
-        else 0
+        else 0.0
     )
 
     return {
         "ai_messages": {
             "total": total_ai_messages,
-            "average_confidence": round(average_confidence, 4),
+            "average_confidence": round(float(average_confidence), 4),
             "low_confidence": low_confidence_messages
         },
         "intent_distribution": intent_distribution,
@@ -532,6 +552,6 @@ def get_ai_analytics(
             "total": total_conversations,
             "ai_active": ai_active_conversations,
             "human_support": human_support_conversations,
-            "escalation_rate": round(escalation_rate, 4)
+            "escalation_rate": round(float(escalation_rate), 4)
         }
     }

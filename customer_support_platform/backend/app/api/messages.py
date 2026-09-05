@@ -98,6 +98,20 @@ def send_message(
 
             db.add(customer_message)
 
+            # Mirror to linked ticket if exists so ticket thread is updated
+            if conversation.ticket_id:
+                ticket_msg = TicketMessage(
+                    ticket_id=conversation.ticket_id,
+                    sender_id=current_user.id,
+                    sender_type="customer",
+                    content=content,
+                    is_internal=False
+                )
+                db.add(ticket_msg)
+                ticket = db.query(Ticket).filter(Ticket.id == conversation.ticket_id).first()
+                if ticket:
+                    ticket.updated_at = datetime.utcnow()
+
             conversation.updated_at = datetime.utcnow()
 
             db.commit()
@@ -136,6 +150,24 @@ def send_message(
         conversation.status = "human_support"
         conversation.updated_at = datetime.utcnow()
 
+        # Mirror to linked ticket if exists so agent reply appears on ticket
+        if conversation.ticket_id:
+            ticket_msg = TicketMessage(
+                ticket_id=conversation.ticket_id,
+                sender_id=current_user.id,
+                sender_type=(
+                    "agent"
+                    if current_user.role == UserRole.AGENT
+                    else "admin"
+                ),
+                content=content,
+                is_internal=False
+            )
+            db.add(ticket_msg)
+            ticket = db.query(Ticket).filter(Ticket.id == conversation.ticket_id).first()
+            if ticket:
+                ticket.updated_at = datetime.utcnow()
+
         db.commit()
         db.refresh(human_message)
 
@@ -152,28 +184,28 @@ def send_message(
         )
 
     # --------------------------------------------------
-    # 4. GET PREVIOUS MESSAGES
+    # 4. GET PREVIOUS MESSAGES (Bounded Sliding Window)
     # --------------------------------------------------
 
-    previous_messages = (
+    recent_messages = (
         db.query(Message)
         .filter(
             Message.conversation_id == conversation_id
         )
         .order_by(
-            Message.created_at.asc()
+            Message.created_at.desc()
         )
+        .limit(10)
         .all()
     )
 
-    conversation_history = []
-
-    for msg in previous_messages:
-
-        conversation_history.append({
+    conversation_history = [
+        {
             "sender_type": msg.sender_type,
             "content": msg.content
-        })
+        }
+        for msg in reversed(recent_messages)
+    ]
 
     # --------------------------------------------------
     # 5. SAVE CUSTOMER MESSAGE
@@ -253,6 +285,7 @@ def send_message(
 
         ticket = Ticket(
             customer_id=current_user.id,
+            conversation_id=conversation.id,
             subject=f"AI Escalation: {ai_result['intent']}",
             description=content,
             category=ai_result["intent"],
@@ -263,6 +296,8 @@ def send_message(
         db.add(ticket)
 
         db.flush()
+
+        conversation.ticket_id = ticket.id
 
         # ----------------------------------------------
         # ADD CUSTOMER MESSAGE TO TICKET

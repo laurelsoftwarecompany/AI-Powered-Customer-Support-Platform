@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -36,6 +36,12 @@ class Conversation(Base):
         Boolean,
         default=True,
         nullable=False
+    )
+
+    ticket_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        index=True
     )
 
     created_at: Mapped[datetime] = mapped_column(

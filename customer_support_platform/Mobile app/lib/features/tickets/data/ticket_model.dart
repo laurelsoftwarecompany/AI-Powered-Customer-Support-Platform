@@ -118,10 +118,10 @@ class TicketModel {
           (agentId == null ? 'Unassigned' : 'Support Team'),
       assignedAgentId: agentId is int ? agentId : int.tryParse('$agentId'),
       createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'])
+          ? (DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now())
           : DateTime.now(),
       updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'])
+          ? (DateTime.tryParse(json['updated_at'].toString()) ?? DateTime.now())
           : DateTime.now(),
     );
   }

@@ -12,7 +12,7 @@ class AuthRepository {
   AuthRepository({
     required this.apiClient,
     required this.tokenStorage,
-    this.useMock = true,
+    this.useMock = false,
   });
 
   // Login request
@@ -117,6 +117,60 @@ class AuthRepository {
   Future<bool> isAuthenticated() async {
     final token = await tokenStorage.getAccessToken();
     return token != null && token.isNotEmpty;
+  }
+
+  Future<UserModel> updateProfile({
+    String? name,
+    String? phone,
+    String? location,
+    String? organization,
+  }) async {
+    if (useMock) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      final current = await getCurrentUser() ??
+          UserModel(id: 'user_001', name: 'Customer', email: 'user@test.com');
+      return current.copyWith(
+        name: name,
+        phone: phone,
+        location: location,
+        organization: organization,
+      );
+    }
+
+    try {
+      final data = <String, dynamic>{};
+      if (name != null) data['name'] = name;
+      if (phone != null) data['phone'] = phone;
+      if (location != null) data['location'] = location;
+      if (organization != null) data['organization'] = organization;
+
+      final response = await apiClient.dio.put('/auth/profile', data: data);
+      return UserModel.fromJson(Map<String, dynamic>.from(response.data));
+    } on DioException catch (e) {
+      throw Exception(_errorMessage(e, 'Failed to update profile.'));
+    }
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    if (useMock) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      return;
+    }
+
+    try {
+      await apiClient.dio.post(
+        '/auth/change-password',
+        data: {
+          'current_password': currentPassword,
+          'new_password': newPassword,
+        },
+      );
+    } on DioException catch (e) {
+      throw Exception(_errorMessage(e, 'Failed to change password.'));
+    }
   }
 
   Future<void> logout() async {

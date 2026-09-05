@@ -118,11 +118,35 @@ export default function TicketDetailPage({
       <PageHeader
         title={t.subject}
         subtitle={`${ticketNo(t.id)} · ${titleCase(t.category)} · opened ${dateTime(t.created_at)}`}
+        actions={
+          t.conversation_id ? (
+            <Link
+              href={`/conversations/${t.conversation_id}`}
+              className="inline-flex items-center gap-1 rounded-md border border-brand/30 bg-brand-wash px-2.5 py-1 text-[12px] font-medium text-brand hover:bg-brand/15"
+            >
+              Originated from Live Chat #{t.conversation_id} →
+            </Link>
+          ) : undefined
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
         {/* thread */}
         <div className="flex flex-col gap-3">
+          {t.conversation_id && (
+            <div className="flex items-center justify-between rounded-lg border border-brand/30 bg-brand-wash px-4 py-2.5 text-[12px]">
+              <div className="flex items-center gap-2 text-ink">
+                <span className="font-semibold text-brand">Live Chat Synced:</span>
+                <span>Replies sent here automatically sync live to customer's chat session.</span>
+              </div>
+              <Link
+                href={`/conversations/${t.conversation_id}`}
+                className="font-medium text-brand hover:underline"
+              >
+                View Live Chat #{t.conversation_id} →
+              </Link>
+            </div>
+          )}
           <Panel>
             <PanelHeader title="Conversation" />
             <div className="flex flex-col gap-3 p-4">

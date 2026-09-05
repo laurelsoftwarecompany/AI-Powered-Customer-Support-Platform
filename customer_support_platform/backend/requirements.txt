@@ -18,7 +18,7 @@ pydantic==2.10.4
 pydantic-settings==2.7.0
 
 # --- auth ---
-python-jose[cryptography]==3.3.0
+pyjwt[crypto]>=2.9.0
 pwdlib[argon2]==0.2.1
 
 # --- AI provider SDKs (only the configured one is used) ---

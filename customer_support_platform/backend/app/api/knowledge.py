@@ -24,14 +24,26 @@ def _require_admin(user: User) -> None:
         raise HTTPException(403, "Only administrators can manage the knowledge base")
 
 
-def _serialize(db: Session, doc: KnowledgeDocument) -> dict:
+def _serialize(db: Session, doc: KnowledgeDocument, include_content: bool = False) -> dict:
     total, embedded = knowledge_service.index_status(db, doc.id)
-    return {
+    summary = ""
+    if doc.content:
+        clean_lines = [
+            line.strip().lstrip("#").strip()
+            for line in doc.content.splitlines()
+            if line.strip()
+        ]
+        body_lines = clean_lines[1:] if len(clean_lines) > 1 else clean_lines
+        joined = " ".join(body_lines)
+        summary = (joined[:180] + "...") if len(joined) > 180 else joined
+
+    data = {
         "id": doc.id,
         "title": doc.title,
         "filename": doc.filename,
         "file_type": doc.file_type,
         "status": doc.status,
+        "summary": summary,
         "chunk_count": total,
         "embedded_chunks": embedded,
         "indexed": total > 0 and embedded == total,
@@ -39,6 +51,9 @@ def _serialize(db: Session, doc: KnowledgeDocument) -> dict:
         "created_at": doc.created_at,
         "updated_at": doc.updated_at,
     }
+    if include_content:
+        data["content"] = doc.content
+    return data
 
 
 # ============================================================
@@ -63,13 +78,11 @@ def list_documents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_staff(current_user)
-    docs = (
-        db.query(KnowledgeDocument)
-        .order_by(KnowledgeDocument.created_at.desc())
-        .all()
-    )
-    return [_serialize(db, d) for d in docs]
+    query = db.query(KnowledgeDocument)
+    if current_user.role == UserRole.CUSTOMER:
+        query = query.filter(KnowledgeDocument.status == "active")
+    docs = query.order_by(KnowledgeDocument.id.asc()).all()
+    return [_serialize(db, d, include_content=True) for d in docs]
 
 
 @router.get("/documents/{document_id}")
@@ -78,11 +91,13 @@ def get_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_staff(current_user)
-    doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.id == document_id).first()
+    query = db.query(KnowledgeDocument).filter(KnowledgeDocument.id == document_id)
+    if current_user.role == UserRole.CUSTOMER:
+        query = query.filter(KnowledgeDocument.status == "active")
+    doc = query.first()
     if not doc:
         raise HTTPException(404, "Document not found")
-    return {**_serialize(db, doc), "content": doc.content}
+    return _serialize(db, doc, include_content=True)
 
 
 # ============================================================
@@ -98,12 +113,36 @@ async def upload_document(
 ):
     _require_admin(current_user)
 
-    name = file.filename or "document"
+    raw_name = file.filename or "document.txt"
+    # Path traversal protection: strip directory components
+    import os
+    name = os.path.basename(raw_name).replace("..", "").strip()
+    if not name:
+        name = "document.txt"
+
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else "txt"
     if ext not in {"pdf", "txt", "md", "markdown"}:
         raise HTTPException(400, "Supported file types: PDF, TXT, Markdown")
 
-    data = await file.read()
+    # Bounded streaming read to prevent server OOM DoS attacks
+    max_upload_size = 10 * 1024 * 1024  # 10 MB
+    chunk_size = 64 * 1024
+    total_bytes = 0
+    buffer = bytearray()
+
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        if total_bytes > max_upload_size:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File exceeds maximum allowed size of {max_upload_size // (1024 * 1024)} MB",
+            )
+        buffer.extend(chunk)
+
+    data = bytes(buffer)
     if not data:
         raise HTTPException(400, "The uploaded file is empty")
 
