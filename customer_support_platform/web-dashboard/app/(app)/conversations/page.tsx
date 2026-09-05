@@ -15,7 +15,7 @@ import {
 } from "@/components/ui";
 import { convNo, relativeTime } from "@/lib/format";
 
-type Filter = "all" | "ai" | "human";
+type Filter = "all" | "ask_ai" | "tickets" | "ai" | "human";
 
 export default function ConversationsPage() {
   const { data, isLoading, isError, error } = useConversations();
@@ -24,6 +24,8 @@ export default function ConversationsPage() {
 
   const rows = useMemo(() => {
     let list = data ?? [];
+    if (filter === "ask_ai") list = list.filter((c) => !c.ticket_id);
+    if (filter === "tickets") list = list.filter((c) => !!c.ticket_id);
     if (filter === "ai") list = list.filter((c) => c.ai_active);
     if (filter === "human") list = list.filter((c) => !c.ai_active);
     return [...list].sort(
@@ -31,20 +33,24 @@ export default function ConversationsPage() {
     );
   }, [data, filter]);
 
+  const askAiCount = (data ?? []).filter((c) => !c.ticket_id).length;
+  const ticketCount = (data ?? []).filter((c) => !!c.ticket_id).length;
   const aiCount = (data ?? []).filter((c) => c.ai_active).length;
   const humanCount = (data ?? []).filter((c) => !c.ai_active).length;
 
   const tabs: { key: Filter; label: string; count: number }[] = [
     { key: "all", label: "All", count: data?.length ?? 0 },
+    { key: "ask_ai", label: "Ask AI (General)", count: askAiCount },
+    { key: "tickets", label: "Ticket Live Chats", count: ticketCount },
     { key: "ai", label: "With AI", count: aiCount },
-    { key: "human", label: "With an agent", count: humanCount },
+    { key: "human", label: "With Agent", count: humanCount },
   ];
 
   return (
     <>
       <PageHeader title="Conversations" subtitle="Customer chats with the AI assistant and support team" />
 
-      <div className="mb-3 flex gap-1">
+      <div className="mb-3 flex flex-wrap gap-1">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -77,6 +83,8 @@ export default function ConversationsPage() {
           <div className="divide-y divide-border">
             {rows.map((c) => {
               const customer = userMap.get(c.customer_id);
+              const isTicketChat = !!c.ticket_id;
+
               return (
                 <Link
                   key={c.id}
@@ -85,14 +93,25 @@ export default function ConversationsPage() {
                 >
                   <Avatar name={customer?.name ?? "?"} size={32} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium text-ink">
-                      {customer?.name ?? `Customer #${c.customer_id}`}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-[13px] font-medium text-ink">
+                        {customer?.name ?? `Customer #${c.customer_id}`}
+                      </p>
+                      {isTicketChat ? (
+                        <span className="inline-flex items-center rounded border border-brand/30 bg-brand-wash px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-brand">
+                          TCK-{String(c.ticket_id).padStart(5, "0")}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded border border-purple-500/30 bg-purple-50 px-1.5 py-0.5 text-[10.5px] font-medium text-purple-700 dark:bg-purple-950/30 dark:text-purple-300">
+                          Ask AI
+                        </span>
+                      )}
+                    </div>
                     <p className="font-mono text-[11px] text-ink-faint">
                       {convNo(c.id)}
-                      {c.ticket_id && (
-                        <span className="ml-2 font-sans font-medium text-brand">
-                          · Ticket TCK-{String(c.ticket_id).padStart(5, "0")}
+                      {isTicketChat && (
+                        <span className="ml-2 font-sans font-normal text-ink-faint">
+                          · Linked Live Support Chat
                         </span>
                       )}
                     </p>
@@ -102,11 +121,11 @@ export default function ConversationsPage() {
                       "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium",
                       c.ai_active
                         ? "bg-brand-wash text-brand"
-                        : "bg-st-waiting-wash text-st-waiting",
+                        : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300",
                     )}
                   >
                     {c.ai_active ? <Bot size={11} /> : <Headphones size={11} />}
-                    {c.ai_active ? "AI handling" : "Agent handling"}
+                    {c.ai_active ? (isTicketChat ? "AI First Responder" : "AI handling") : "Agent handling"}
                   </span>
                   <span className="tnum hidden w-[64px] shrink-0 text-right text-[11px] text-ink-faint sm:block">
                     {relativeTime(c.updated_at)}

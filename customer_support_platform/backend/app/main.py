@@ -21,6 +21,7 @@ from app.api.tickets import router as tickets_router
 from app.api.agents import router as agents_router
 from app.api.admin import router as admin_router
 from app.api.knowledge import router as knowledge_router
+from app.api.ws_routes import router as ws_router
 
 
 API_PREFIX = "/api/v1"
@@ -77,6 +78,7 @@ for router in (
     agents_router,
     admin_router,
     knowledge_router,
+    ws_router,
 ):
     app.include_router(router, prefix=API_PREFIX)
 

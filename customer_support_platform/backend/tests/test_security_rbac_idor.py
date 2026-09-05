@@ -80,12 +80,18 @@ def test_rbac_and_idor_protection(client, db):
     assert r.status_code == 403
 
     # 6. Data Isolation: Internal staff notes are hidden from customers
+    sarah_t_resp = client.post(
+        "/api/v1/tickets/",
+        headers=sarah_headers,
+        json={"subject": "Note Test", "description": "Testing notes", "category": "general"},
+    )
+    s_tid = sarah_t_resp.json()["ticket"]["id"]
     client.post(
-        "/api/v1/tickets/1/internal-notes",
+        f"/api/v1/tickets/{s_tid}/internal-notes",
         headers=agent_headers,
         json={"content": "SuperSecretInternalStaffDiscussion"},
     )
-    cust_view = client.get("/api/v1/tickets/1/messages", headers=sarah_headers)
+    cust_view = client.get(f"/api/v1/tickets/{s_tid}/messages", headers=sarah_headers)
     assert cust_view.status_code == 200
     all_contents = [m.get("content") for m in cust_view.json()]
     assert "SuperSecretInternalStaffDiscussion" not in all_contents

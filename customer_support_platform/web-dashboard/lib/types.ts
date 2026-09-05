@@ -66,6 +66,7 @@ export interface Message {
   id: number;
   conversation_id: number;
   sender_type: SenderType;
+  sender_name?: string | null;
   content: string;
   intent: string | null;
   confidence: number | null;

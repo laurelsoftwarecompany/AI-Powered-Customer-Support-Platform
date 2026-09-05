@@ -94,6 +94,34 @@ export function useAddInternalNote(id: number) {
   });
 }
 
+export function useTakeoverTicket(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ message: string; ticket: Ticket }>(`/tickets/${id}/takeover`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ticket", id] });
+      qc.invalidateQueries({ queryKey: ["ticket", id, "messages"] });
+      qc.invalidateQueries({ queryKey: ["tickets"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
+
+export function useHandbackTicket(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ message: string; ticket: Ticket }>(`/tickets/${id}/handback`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ticket", id] });
+      qc.invalidateQueries({ queryKey: ["ticket", id, "messages"] });
+      qc.invalidateQueries({ queryKey: ["tickets"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
+
 /* ----------------------------------------------------------- conversations */
 export function useConversations() {
   return useQuery({
@@ -124,7 +152,22 @@ export function useTakeoverConversation(id: number) {
     mutationFn: () => api.patch(`/conversations/${id}/takeover`, {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["conversation", id] });
+      qc.invalidateQueries({ queryKey: ["conversation", id, "messages"] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["tickets"] });
+    },
+  });
+}
+
+export function useHandbackConversation(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.patch(`/conversations/${id}/handback`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["conversation", id] });
+      qc.invalidateQueries({ queryKey: ["conversation", id, "messages"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["tickets"] });
     },
   });
 }

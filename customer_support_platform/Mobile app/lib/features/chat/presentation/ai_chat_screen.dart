@@ -12,6 +12,8 @@ class AIChatScreen extends StatefulWidget {
   final VoidCallback onLogTicket;
   final Function(String ticketId)? onOpenTicket;
   final bool isLiveAgent;
+  final TicketModel? ticket;
+  final VoidCallback? onChangeTicket;
 
   const AIChatScreen({
     super.key,
@@ -20,6 +22,8 @@ class AIChatScreen extends StatefulWidget {
     required this.onLogTicket,
     this.onOpenTicket,
     this.isLiveAgent = false,
+    this.ticket,
+    this.onChangeTicket,
   });
 
   @override
@@ -34,7 +38,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
   List<ChatMessage> _messages = [];
   bool _isLoading = false;
   String _status = 'active'; // 'active' or 'agent_takeover'
-  Timer? _pollTimer;
+  StreamSubscription<List<ChatMessage>>? _wsSubscription;
+  Timer? _fallbackPollTimer;
 
   final List<String> _quickPrompts = [
     'How can I reset my password?',
@@ -48,17 +53,30 @@ class _AIChatScreenState extends State<AIChatScreen> {
     super.initState();
     _repository = context.read<ChatRepository>();
     _messages = _repository.getInitialMessages(widget.user?.name ?? 'Customer');
-    _restoreHistory();
     if (widget.isLiveAgent) {
-      _connectLiveAgent();
+      if (widget.ticket != null) {
+        _connectTicketLiveAgent(widget.ticket!);
+      } else {
+        _connectLiveAgent();
+      }
+    } else {
+      _restoreHistory();
     }
   }
 
   @override
   void didUpdateWidget(AIChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isLiveAgent && !oldWidget.isLiveAgent) {
-      _connectLiveAgent();
+    final bool modeBecameLive = widget.isLiveAgent && !oldWidget.isLiveAgent;
+    final bool ticketChanged =
+        widget.isLiveAgent && widget.ticket?.id != oldWidget.ticket?.id;
+
+    if (modeBecameLive || ticketChanged) {
+      if (widget.ticket != null) {
+        _connectTicketLiveAgent(widget.ticket!);
+      } else {
+        _connectLiveAgent();
+      }
     }
   }
 
@@ -74,20 +92,33 @@ class _AIChatScreenState extends State<AIChatScreen> {
       setState(() {
         _messages = history;
         _isLoading = false;
-        if (_repository.handedToHuman) {
-          _status = 'agent_takeover';
-          _startPolling();
-        }
+        _status = _repository.handedToHuman ? 'agent_takeover' : 'active';
       });
+      // Subscribe to WebSocket stream for real-time updates
+      _subscribeToWs();
       _scrollToBottom();
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _startPolling() {
-    _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+  void _subscribeToWs() {
+    _wsSubscription?.cancel();
+    _wsSubscription = _repository.messageStream.listen((messages) {
+      if (!mounted) return;
+      setState(() {
+        _messages = messages;
+        _status = _repository.handedToHuman ? 'agent_takeover' : 'active';
+      });
+      _scrollToBottom();
+    });
+  }
+
+  /// Fallback polling at a much slower interval (30s) for resilience
+  /// in case the WebSocket connection drops without triggering reconnect.
+  void _startFallbackPolling() {
+    _fallbackPollTimer?.cancel();
+    _fallbackPollTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
       if (!mounted || _status != 'agent_takeover') return;
       final latest =
           await _repository.pollMessages(widget.user?.name ?? 'Customer');
@@ -100,20 +131,78 @@ class _AIChatScreenState extends State<AIChatScreen> {
     });
   }
 
+  Future<void> _connectTicketLiveAgent(TicketModel ticket) async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final ticketId = int.tryParse(ticket.id) ?? 0;
+      final history = await _repository.loadTicketChat(
+        ticketId,
+        widget.user?.name ?? 'Customer',
+      );
+      if (!mounted) return;
+
+      final messages = List<ChatMessage>.from(history);
+      if (messages.isEmpty) {
+        if (_repository.isAiActive) {
+          messages.add(
+            ChatMessage(
+              id: 'ticket_intro_${DateTime.now().millisecondsSinceEpoch}',
+              sender: 'ai',
+              senderName: 'Laurel AI Assistant',
+              text:
+                  'Hello! Connected to Live Chat for Ticket ${ticket.ticketNumber}: "${ticket.subject}". I am your AI first responder and can help you right now while a specialist prepares to join.',
+              timestamp: DateTime.now(),
+            ),
+          );
+        } else {
+          final agentName = (ticket.assignedAgentName.isNotEmpty &&
+                  ticket.assignedAgentName != 'Unassigned')
+              ? ticket.assignedAgentName
+              : 'Support Specialist';
+
+          messages.add(
+            ChatMessage(
+              id: 'ticket_intro_${DateTime.now().millisecondsSinceEpoch}',
+              sender: 'agent',
+              senderName: agentName,
+              text:
+                  'Hello! Connected with live support regarding Ticket ${ticket.ticketNumber}: "${ticket.subject}". An agent is here to help you.',
+              timestamp: DateTime.now(),
+            ),
+          );
+        }
+      }
+
+      setState(() {
+        _messages = messages;
+        _isLoading = false;
+        _status = _repository.handedToHuman ? 'agent_takeover' : 'active';
+      });
+      _subscribeToWs();
+      _startFallbackPolling();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
+    _scrollToBottom();
+  }
+
   Future<void> _connectLiveAgent() async {
     setState(() {
       _isLoading = true;
-      _status = 'agent_takeover';
     });
     try {
       final reply = await _repository.requestLiveAgentSession();
       if (!mounted) return;
       setState(() {
-        _messages.add(reply);
+        _messages = _repository.addLocalMessage(reply);
         _isLoading = false;
-        _status = 'agent_takeover';
+        _status = _repository.handedToHuman ? 'agent_takeover' : 'active';
       });
-      _startPolling();
+      _subscribeToWs();
+      _startFallbackPolling();
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -123,7 +212,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _wsSubscription?.cancel();
+    _fallbackPollTimer?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -156,7 +246,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
     );
 
     setState(() {
-      _messages.add(userMsg);
+      _messages = _repository.addLocalMessage(userMsg);
       _isLoading = true;
     });
     _scrollToBottom();
@@ -165,13 +255,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
       final botReply = await _repository.sendUserMessage(text);
       if (!mounted) return;
       setState(() {
-        _messages.add(botReply);
+        _messages = _repository.addLocalMessage(botReply);
         _isLoading = false;
-        if (_repository.handedToHuman) {
-          _status = 'agent_takeover';
-          _startPolling();
-        }
+        _status = _repository.handedToHuman ? 'agent_takeover' : 'active';
       });
+      if (_repository.handedToHuman) {
+        _startFallbackPolling();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -192,13 +282,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
       final reply = await _repository.requestHumanHandoff();
       if (!mounted) return;
       setState(() {
-        _messages.add(reply);
+        _messages = _repository.addLocalMessage(reply);
         _isLoading = false;
-        if (_repository.handedToHuman) {
-          _status = 'agent_takeover';
-          _startPolling();
-        }
+        _status = _repository.handedToHuman ? 'agent_takeover' : 'active';
       });
+      if (_repository.handedToHuman) {
+        _startFallbackPolling();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -211,6 +301,12 @@ class _AIChatScreenState extends State<AIChatScreen> {
       );
     }
     _scrollToBottom();
+  }
+
+  String _formatTime(DateTime dt) {
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '$hour:$min';
   }
 
   @override
@@ -237,28 +333,38 @@ class _AIChatScreenState extends State<AIChatScreen> {
             Stack(
               children: [
                 Container(
-                  width: 34,
-                  height: 34,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
                     color: _status == 'agent_takeover'
                         ? const Color(0xFFD97706)
                         : primaryIndigo,
                     borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (_status == 'agent_takeover'
+                                ? const Color(0xFFD97706)
+                                : primaryIndigo)
+                            .withValues(alpha: 0.25),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Icon(
                     _status == 'agent_takeover'
-                        ? Icons.headset_mic_rounded
+                        ? Icons.person_rounded
                         : Icons.smart_toy_rounded,
                     color: Colors.white,
-                    size: 18,
+                    size: 20,
                   ),
                 ),
                 Positioned(
                   right: 0,
                   bottom: 0,
                   child: Container(
-                    width: 8,
-                    height: 8,
+                    width: 9,
+                    height: 9,
                     decoration: BoxDecoration(
                       color: const Color(0xFF10B981),
                       shape: BoxShape.circle,
@@ -268,55 +374,77 @@ class _AIChatScreenState extends State<AIChatScreen> {
                 ),
               ],
             ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      _status == 'agent_takeover'
-                          ? 'Live Support Agent'
-                          : 'Laurel AI Assistant',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _status == 'agent_takeover'
+                              ? 'Live Support Specialist'
+                              : 'Laurel AI Assistant',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
                       ),
-                    ),
-                    if (_status == 'agent_takeover') ...[
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 5),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 1,
+                          horizontal: 5.5,
+                          vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFEF3C7),
+                          color: _status == 'agent_takeover'
+                              ? const Color(0xFFFEF3C7)
+                              : const Color(0xFFEEF2FF),
                           borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: _status == 'agent_takeover'
+                                ? const Color(0xFFFDE68A)
+                                : const Color(0xFFC7D2FE),
+                          ),
                         ),
-                        child: const Text(
-                          'Live Agent',
+                        child: Text(
+                          _status == 'agent_takeover'
+                              ? '👤 Human Agent'
+                              : (widget.isLiveAgent
+                                  ? '🤖 AI Active'
+                                  : '🤖 AI Assistant'),
                           style: TextStyle(
-                            fontSize: 8,
+                            fontSize: 8.5,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFFB45309),
+                            color: _status == 'agent_takeover'
+                                ? const Color(0xFFB45309)
+                                : primaryIndigo,
                           ),
                         ),
                       ),
                     ],
-                  ],
-                ),
-                Text(
-                  _status == 'agent_takeover'
-                      ? 'Handled by our support team'
-                      : 'RAG Grounded in KB',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFF64748B),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 1),
+                  Text(
+                    _status == 'agent_takeover'
+                        ? 'Specialist has taken over this chat'
+                        : (widget.isLiveAgent
+                            ? 'AI answering until human specialist takes over'
+                            : 'RAG Grounded in KB'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -357,28 +485,41 @@ class _AIChatScreenState extends State<AIChatScreen> {
       ),
       body: Column(
         children: [
-          // Agent takeover banner with linked ticket shortcut
-          if (_status == 'agent_takeover')
+          // Banner with linked ticket shortcut and current handler status
+          if (widget.isLiveAgent || widget.ticket != null || _repository.linkedTicketId != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFEF3C7),
+              decoration: BoxDecoration(
+                color: _status == 'agent_takeover'
+                    ? const Color(0xFFFEF3C7)
+                    : const Color(0xFFEEF2FF),
                 border: Border(
-                  bottom: BorderSide(color: Color(0xFFFDE68A), width: 1),
+                  bottom: BorderSide(
+                    color: _status == 'agent_takeover'
+                        ? const Color(0xFFFDE68A)
+                        : const Color(0xFFC7D2FE),
+                    width: 1,
+                  ),
                 ),
               ),
               child: Row(
                 children: [
                   Container(
-                    width: 32,
-                    height: 32,
+                    width: 34,
+                    height: 34,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFDE68A),
+                      color: _status == 'agent_takeover'
+                          ? const Color(0xFFFDE68A)
+                          : const Color(0xFFE0E7FF),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(
-                      Icons.support_agent_rounded,
-                      color: Color(0xFFB45309),
+                    child: Icon(
+                      _status == 'agent_takeover'
+                          ? Icons.support_agent_rounded
+                          : Icons.smart_toy_rounded,
+                      color: _status == 'agent_takeover'
+                          ? const Color(0xFFB45309)
+                          : primaryIndigo,
                       size: 20,
                     ),
                   ),
@@ -387,42 +528,113 @@ class _AIChatScreenState extends State<AIChatScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
                             Text(
-                              'Live Specialist Support',
+                              widget.ticket != null
+                                  ? 'Discussing ${widget.ticket!.ticketNumber}'
+                                  : (_repository.linkedTicketId != null
+                                      ? 'Ticket #${TicketModel.numberFor(_repository.linkedTicketId!)}'
+                                      : 'Live Support Request'),
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
-                                color: Color(0xFF92400E),
+                                color: _status == 'agent_takeover'
+                                    ? const Color(0xFF92400E)
+                                    : primaryIndigo,
                               ),
                             ),
-                            SizedBox(width: 5),
+                            const SizedBox(width: 5),
                             Icon(
                               Icons.circle,
                               size: 6,
-                              color: Color(0xFF10B981),
+                              color: _status == 'agent_takeover'
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFF6366F1),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _status == 'agent_takeover'
+                                  ? 'Live Specialist'
+                                  : 'AI First Responder',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: _status == 'agent_takeover'
+                                    ? const Color(0xFFB45309)
+                                    : const Color(0xFF4338CA),
+                              ),
                             ),
                           ],
                         ),
                         Text(
-                          _repository.linkedTicketId != null
-                              ? 'Ticket #${TicketModel.numberFor(_repository.linkedTicketId!)} linked · Replies sync live'
-                              : 'Connected to human queue. Replies will appear here.',
-                          style: const TextStyle(
+                          _status == 'agent_takeover'
+                              ? 'A human support specialist has taken control of this session.'
+                              : 'AI is answering your questions until an agent joins.',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
                             fontSize: 10.5,
-                            color: Color(0xFFB45309),
+                            color: _status == 'agent_takeover'
+                                ? const Color(0xFFB45309)
+                                : const Color(0xFF4338CA),
                             height: 1.25,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  if (_repository.linkedTicketId != null &&
+                  if (widget.onChangeTicket != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: InkWell(
+                        onTap: widget.onChangeTicket,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: _status == 'agent_takeover'
+                                  ? const Color(0xFFFDE68A)
+                                  : const Color(0xFFC7D2FE),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.swap_horiz_rounded,
+                                size: 13,
+                                color: _status == 'agent_takeover'
+                                    ? const Color(0xFF92400E)
+                                    : primaryIndigo,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                'Tickets',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _status == 'agent_takeover'
+                                    ? const Color(0xFF92400E)
+                                    : primaryIndigo,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  if ((widget.ticket != null || _repository.linkedTicketId != null) &&
                       widget.onOpenTicket != null)
                     InkWell(
                       onTap: () => widget.onOpenTicket!(
-                        _repository.linkedTicketId!.toString(),
+                        widget.ticket?.id ?? _repository.linkedTicketId!.toString(),
                       ),
                       borderRadius: BorderRadius.circular(6),
                       child: Container(
@@ -431,7 +643,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFD97706),
+                          color: _status == 'agent_takeover'
+                              ? const Color(0xFFD97706)
+                              : primaryIndigo,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Row(
@@ -467,65 +681,185 @@ class _AIChatScreenState extends State<AIChatScreen> {
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final msg = _messages[index];
+
+                // 1. System notification / status message
+                if (msg.sender == 'system') {
+                  return Center(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE2E8F0),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.info_outline_rounded,
+                            size: 13,
+                            color: Color(0xFF475569),
+                          ),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              msg.text,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF475569),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
                 final isMe = msg.sender == 'customer';
                 final isAgent = msg.sender == 'agent';
 
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
+                  padding: const EdgeInsets.only(bottom: 14.0),
                   child: Column(
                     crossAxisAlignment: isMe
                         ? CrossAxisAlignment.end
                         : CrossAxisAlignment.start,
                     children: [
+                      // Sender Badge Header for incoming messages
+                      if (!isMe)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 5, left: 2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircleAvatar(
+                                radius: 10,
+                                backgroundColor: isAgent
+                                    ? const Color(0xFFD97706)
+                                    : primaryIndigo,
+                                child: Icon(
+                                  isAgent
+                                      ? Icons.person_rounded
+                                      : Icons.smart_toy_rounded,
+                                  size: 11,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                isAgent
+                                    ? (msg.senderName.isNotEmpty
+                                        ? msg.senderName
+                                        : 'Support Specialist')
+                                    : 'Laurel AI Assistant',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1.5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isAgent
+                                      ? const Color(0xFFFEF3C7)
+                                      : const Color(0xFFEEF2FF),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: isAgent
+                                        ? const Color(0xFFFDE68A)
+                                        : const Color(0xFFC7D2FE),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      isAgent
+                                          ? Icons.verified_user_rounded
+                                          : Icons.auto_awesome,
+                                      size: 9,
+                                      color: isAgent
+                                          ? const Color(0xFFB45309)
+                                          : primaryIndigo,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      isAgent
+                                          ? 'Human Agent'
+                                          : 'AI Assistant',
+                                      style: TextStyle(
+                                        fontSize: 8.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: isAgent
+                                            ? const Color(0xFFB45309)
+                                            : primaryIndigo,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      // Message Bubble
                       Row(
                         mainAxisAlignment: isMe
                             ? MainAxisAlignment.end
                             : MainAxisAlignment.start,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          if (!isMe) ...[
-                            CircleAvatar(
-                              radius: 12,
-                              backgroundColor: isAgent
-                                  ? const Color(0xFFD97706)
-                                  : primaryIndigo,
-                              child: Icon(
-                                isAgent
-                                    ? Icons.headset_mic_rounded
-                                    : Icons.smart_toy_rounded,
-                                size: 13,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                          ],
                           Flexible(
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
+                                horizontal: 13,
+                                vertical: 9,
                               ),
                               decoration: BoxDecoration(
                                 color: isMe
                                     ? primaryIndigo
                                     : isAgent
-                                    ? const Color(0xFFFEF3C7)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(14),
+                                        ? const Color(0xFFFFFBEB)
+                                        : Colors.white,
+                                borderRadius: BorderRadius.only(
+                                  topLeft: const Radius.circular(14),
+                                  topRight: const Radius.circular(14),
+                                  bottomLeft: Radius.circular(isMe ? 14 : 3),
+                                  bottomRight: Radius.circular(isMe ? 3 : 14),
+                                ),
                                 border: isMe
                                     ? null
                                     : Border.all(
-                                        color: const Color(0xFFE2E8F0),
+                                        color: isAgent
+                                            ? const Color(0xFFFCD34D)
+                                            : const Color(0xFFE2E8F0),
+                                        width: isAgent ? 1.2 : 1,
                                       ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: isAgent
+                                        ? const Color(0xFFD97706).withValues(alpha: 0.06)
+                                        : Colors.black.withValues(alpha: 0.03),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
                               ),
                               child: Text(
                                 msg.text,
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 12.5,
                                   color: isMe
                                       ? Colors.white
                                       : const Color(0xFF0F172A),
-                                  height: 1.4,
+                                  height: 1.45,
                                 ),
                               ),
                             ),
@@ -533,11 +867,33 @@ class _AIChatScreenState extends State<AIChatScreen> {
                         ],
                       ),
 
-                      // RAG Citations & Action buttons
-                      if (!isMe) ...[
+                      // Footer & Citations
+                      if (isAgent)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3, left: 4),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.shield_outlined,
+                                size: 10,
+                                color: Color(0xFFD97706),
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                'Verified Specialist Response · ${_formatTime(msg.timestamp)}',
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  color: Color(0xFF92400E),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (!isMe) ...[
                         if (msg.intent != null)
                           Padding(
-                            padding: const EdgeInsets.only(left: 30, top: 4),
+                            padding: const EdgeInsets.only(left: 4, top: 4),
                             child: Row(
                               children: [
                                 Container(
@@ -585,7 +941,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
                         if (msg.kbSources != null && msg.kbSources!.isNotEmpty)
                           Padding(
-                            padding: const EdgeInsets.only(left: 30, top: 4),
+                            padding: const EdgeInsets.only(left: 4, top: 4),
                             child: Container(
                               padding: const EdgeInsets.all(6),
                               decoration: BoxDecoration(
@@ -623,7 +979,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
                         if (msg.suggestedAction == 'contact_agent' &&
                             _status != 'agent_takeover')
                           Padding(
-                            padding: const EdgeInsets.only(left: 30, top: 6),
+                            padding: const EdgeInsets.only(left: 4, top: 6),
                             child: InkWell(
                               onTap: _handleEscalateToHuman,
                               child: Container(
@@ -657,22 +1013,32 @@ class _AIChatScreenState extends State<AIChatScreen> {
                               ),
                             ),
                           ),
-                      ],
 
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          top: 2,
-                          right: 4,
-                          left: 32,
-                        ),
-                        child: Text(
-                          '${msg.timestamp.hour}:${msg.timestamp.minute.toString().padLeft(2, '0')}',
-                          style: const TextStyle(
-                            fontSize: 9,
-                            color: Color(0xFF94A3B8),
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: 3,
+                            left: 4,
+                          ),
+                          child: Text(
+                            'AI Assistant · ${_formatTime(msg.timestamp)}',
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: Color(0xFF94A3B8),
+                            ),
                           ),
                         ),
-                      ),
+                      ] else ...[
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2, right: 4),
+                          child: Text(
+                            _formatTime(msg.timestamp),
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 );
@@ -697,8 +1063,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
                   const SizedBox(width: 8),
                   Text(
                     _status == 'agent_takeover'
-                        ? 'Sending to the support team...'
-                        : 'Searching KB & Generating...',
+                        ? 'Forwarding to live support specialist...'
+                        : 'Searching KB & Generating AI response...',
                     style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF64748B),
@@ -745,8 +1111,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
                     style: const TextStyle(fontSize: 12),
                     decoration: InputDecoration(
                       hintText: _status == 'agent_takeover'
-                          ? 'Reply to live agent...'
-                          : 'Ask AI support question...',
+                          ? 'Reply to live support specialist...'
+                          : (widget.isLiveAgent
+                              ? 'Ask AI (responding until agent joins)...'
+                              : 'Ask AI support question...'),
                       hintStyle: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF94A3B8),

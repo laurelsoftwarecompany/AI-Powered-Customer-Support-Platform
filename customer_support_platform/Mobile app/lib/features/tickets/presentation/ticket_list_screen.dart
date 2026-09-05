@@ -13,9 +13,15 @@ import '../data/ticket_repository.dart';
 
 class TicketListScreen extends StatefulWidget {
   final Function(int tabIndex)? onNavigateTab;
+  final Function(TicketModel ticket)? onOpenLiveChat;
   final String? initialTicketId;
 
-  const TicketListScreen({super.key, this.onNavigateTab, this.initialTicketId});
+  const TicketListScreen({
+    super.key,
+    this.onNavigateTab,
+    this.onOpenLiveChat,
+    this.initialTicketId,
+  });
 
   @override
   State<TicketListScreen> createState() => _TicketListScreenState();
@@ -615,9 +621,7 @@ class _TicketListScreenState extends State<TicketListScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Live Chat Sync Banner
-                  if (ticket.subject.contains('AI Escalation') ||
-                      ticket.subject.contains('Live Support') ||
-                      ticket.subject.contains('Live Chat'))
+                  if (ticket.conversationId != null)
                     Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.symmetric(
@@ -662,8 +666,14 @@ class _TicketListScreenState extends State<TicketListScreen> {
                           InkWell(
                             onTap: () {
                               _ticketPollTimer?.cancel();
+                              final currentTicket = _activeTicket;
                               setState(() => _activeTicket = null);
-                              widget.onNavigateTab?.call(1);
+                              if (currentTicket != null &&
+                                  widget.onOpenLiveChat != null) {
+                                widget.onOpenLiveChat!(currentTicket);
+                              } else {
+                                widget.onNavigateTab?.call(1);
+                              }
                             },
                             borderRadius: BorderRadius.circular(6),
                             child: Container(

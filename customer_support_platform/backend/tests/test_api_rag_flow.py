@@ -73,7 +73,12 @@ def test_sources_are_persisted_on_the_message(client, customer_token, kb_ready):
     assert ai_messages[-1]["sources"], "sources should be stored on the AI message"
 
 
-def test_complaint_escalates_and_opens_a_ticket(client, customer_token):
+def test_ask_ai_never_hands_a_complaint_off(client, customer_token):
+    """Ask AI is a pure-AI surface: even a complaint gets an AI answer.
+
+    It must not silently open a ticket or hand the thread to a human - the
+    customer reaches a human through the Live Agent section instead.
+    """
     cid = _new_conversation(client, customer_token)
     r = client.post(
         f"/api/v1/conversations/{cid}/messages",
@@ -82,13 +87,22 @@ def test_complaint_escalates_and_opens_a_ticket(client, customer_token):
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["escalated"] is True
-    assert body["ticket"]["id"]
-    assert body["ticket"]["category"] == "complaint"
 
-    # conversation has handed off to a human
+    assert body["escalated"] is False
+    assert body.get("ticket") is None
+    assert body["ai_message"]["content"].strip()
+
+    # The thread stays with the AI and keeps answering.
     conv = client.get(f"/api/v1/conversations/{cid}", headers=_auth(customer_token)).json()
-    assert conv["ai_active"] is False
+    assert conv["ai_active"] is True
+    assert conv["ticket_id"] is None
+
+    again = client.post(
+        f"/api/v1/conversations/{cid}/messages",
+        headers=_auth(customer_token),
+        json={"content": "Fine - how do I reset my password?"},
+    ).json()
+    assert again["ai_message"]["content"].strip()
 
 
 def test_message_content_is_required(client, customer_token):

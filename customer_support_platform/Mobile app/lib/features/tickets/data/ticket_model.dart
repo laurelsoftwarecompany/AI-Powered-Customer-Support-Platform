@@ -38,6 +38,7 @@ class TicketModel {
   final String status;
   final String assignedAgentName;
   final int? assignedAgentId;
+  final int? conversationId;
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<TicketTimelineEvent> timeline;
@@ -53,6 +54,7 @@ class TicketModel {
     required this.status,
     this.assignedAgentName = 'Unassigned',
     this.assignedAgentId,
+    this.conversationId,
     required this.createdAt,
     required this.updatedAt,
     List<TicketTimelineEvent>? timeline,
@@ -103,6 +105,7 @@ class TicketModel {
     final rawStatus = (json['status'] ?? 'open').toString().toLowerCase();
     final rawPriority = (json['priority'] ?? 'medium').toString().toLowerCase();
     final agentId = json['assigned_agent_id'];
+    final convId = json['conversation_id'];
 
     return TicketModel(
       id: json['id']?.toString() ?? '',
@@ -117,6 +120,7 @@ class TicketModel {
       assignedAgentName: json['assigned_agent_name'] ??
           (agentId == null ? 'Unassigned' : 'Support Team'),
       assignedAgentId: agentId is int ? agentId : int.tryParse('$agentId'),
+      conversationId: convId is int ? convId : int.tryParse('$convId'),
       createdAt: json['created_at'] != null
           ? (DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now())
           : DateTime.now(),

@@ -7,7 +7,7 @@ class KnowledgeBaseSource {
 
 class ChatMessage {
   final String id;
-  final String sender; // 'customer', 'ai', or 'agent'
+  final String sender; // 'customer', 'ai', 'agent', or 'system'
   final String senderName;
   final String text;
   final DateTime timestamp;

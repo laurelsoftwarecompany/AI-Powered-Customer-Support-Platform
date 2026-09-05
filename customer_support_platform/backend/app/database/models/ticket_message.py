@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Text, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, Text, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -25,9 +25,9 @@ class TicketMessage(Base):
         index=True
     )
 
-    sender_id: Mapped[int] = mapped_column(
+    sender_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"),
-        nullable=False,
+        nullable=True,
         index=True
     )
 
@@ -39,6 +39,11 @@ class TicketMessage(Base):
     content: Mapped[str] = mapped_column(
         Text,
         nullable=False
+    )
+
+    sources: Mapped[list | None] = mapped_column(
+        JSON(none_as_null=True),
+        nullable=True
     )
 
     is_internal: Mapped[bool] = mapped_column(

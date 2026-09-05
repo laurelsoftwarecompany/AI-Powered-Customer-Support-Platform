@@ -1,17 +1,23 @@
 "use client";
 
 import { use, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowLeft, Lock, Send, StickyNote } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, Headphones, Lock, Send, Sparkles, StickyNote } from "lucide-react";
 import {
   useTicket,
   useTicketMessages,
   useUpdateTicket,
   useReplyToTicket,
   useAddInternalNote,
+  useTakeoverTicket,
+  useHandbackTicket,
+  useConversation,
   useUserMap,
 } from "@/lib/queries";
 import { useToast } from "@/components/toast";
+import { useWebSocket } from "@/lib/useWebSocket";
+import type { WsEvent } from "@/lib/useWebSocket";
 import { PageHeader } from "@/components/page-header";
 import {
   Panel,
@@ -54,10 +60,37 @@ export default function TicketDetailPage({
   const update = useUpdateTicket(id);
   const reply = useReplyToTicket(id);
   const note = useAddInternalNote(id);
+  const takeover = useTakeoverTicket(id);
+  const handback = useHandbackTicket(id);
+
+  const convId = ticket.data?.conversation_id;
+  const conversation = useConversation(convId ?? 0);
+  const isAiActive = conversation.data?.ai_active ?? false;
 
   const [draft, setDraft] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const [mode, setMode] = useState<"reply" | "note">("reply");
+  const qc = useQueryClient();
+
+  // WebSocket: live updates for this ticket
+  useWebSocket(
+    Number.isFinite(id) ? `/ws/tickets/${id}` : null,
+    (event: WsEvent) => {
+      if (event.event === "new_message") {
+        qc.invalidateQueries({ queryKey: ["ticket", id, "messages"] });
+        qc.invalidateQueries({ queryKey: ["ticket", id] });
+        if (convId) {
+          qc.invalidateQueries({ queryKey: ["conversation", convId, "messages"] });
+        }
+      } else if (event.event === "status_change") {
+        qc.invalidateQueries({ queryKey: ["ticket", id] });
+        qc.invalidateQueries({ queryKey: ["tickets"] });
+        if (convId) {
+          qc.invalidateQueries({ queryKey: ["conversation", convId] });
+        }
+      }
+    },
+  );
 
   if (ticket.isLoading) return <DetailSkeleton />;
   if (ticket.isError)
@@ -68,6 +101,24 @@ export default function TicketDetailPage({
   const agents = [...userMap.values()].filter(
     (u) => u.role === "agent" || u.role === "admin",
   );
+
+  async function handleTakeover() {
+    try {
+      await takeover.mutateAsync();
+      notify("You have taken over this ticket live chat.");
+    } catch (e) {
+      notify((e as Error).message, "error");
+    }
+  }
+
+  async function handleHandback() {
+    try {
+      await handback.mutateAsync();
+      notify("Ticket chat returned to AI assistant.");
+    } catch (e) {
+      notify((e as Error).message, "error");
+    }
+  }
 
   async function patch(
     field: "status" | "priority" | "assigned_agent_id",
@@ -134,17 +185,59 @@ export default function TicketDetailPage({
         {/* thread */}
         <div className="flex flex-col gap-3">
           {t.conversation_id && (
-            <div className="flex items-center justify-between rounded-lg border border-brand/30 bg-brand-wash px-4 py-2.5 text-[12px]">
-              <div className="flex items-center gap-2 text-ink">
-                <span className="font-semibold text-brand">Live Chat Synced:</span>
-                <span>Replies sent here automatically sync live to customer's chat session.</span>
-              </div>
-              <Link
-                href={`/conversations/${t.conversation_id}`}
-                className="font-medium text-brand hover:underline"
-              >
-                View Live Chat #{t.conversation_id} →
-              </Link>
+            <div className="flex flex-col gap-2">
+              {isAiActive ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-brand/35 bg-brand-wash px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand">
+                      <Bot size={16} />
+                    </span>
+                    <div>
+                      <p className="text-[12.5px] font-semibold text-ink">
+                        AI First Responder Active
+                      </p>
+                      <p className="text-[11.5px] text-ink-faint">
+                        The AI is handling responses on this ticket. Click "Take Over" or reply below to take over as human agent.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="primary"
+                    onClick={handleTakeover}
+                    loading={takeover.isPending}
+                    className="shrink-0 text-[12px]"
+                  >
+                    Take Over Live Chat
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-50/40 px-4 py-2.5 text-[12px] dark:bg-emerald-950/20">
+                  <div className="flex items-center gap-2 text-ink">
+                    <span className="flex size-2 rounded-full bg-emerald-500" />
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                      Live Agent Connected:
+                    </span>
+                    <span>Human support specialist has control of this ticket session.</span>
+                  </div>
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <Button
+                      variant="outline"
+                      onClick={handleHandback}
+                      loading={handback.isPending}
+                      className="text-[11.5px] py-1 px-2.5 h-auto"
+                    >
+                      <Bot size={13} className="mr-1.5" />
+                      Hand back to AI
+                    </Button>
+                    <Link
+                      href={`/conversations/${t.conversation_id}`}
+                      className="font-medium text-brand hover:underline text-[12px]"
+                    >
+                      View Live Chat #{t.conversation_id} →
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <Panel>
@@ -154,9 +247,14 @@ export default function TicketDetailPage({
                 <Spinner />
               ) : (
                 (messages.data ?? []).map((m) => {
+                  const isAi = m.sender_type === "ai";
                   const sender = userMap.get(m.sender_id);
                   const isStaff =
                     m.sender_type === "agent" || m.sender_type === "admin";
+                  const senderName = isAi
+                    ? "Laurel AI Assistant"
+                    : sender?.name ?? titleCase(m.sender_type);
+
                   return (
                     <div
                       key={m.id}
@@ -164,16 +262,34 @@ export default function TicketDetailPage({
                         "rounded-lg border px-3.5 py-2.5",
                         m.is_internal
                           ? "border-st-progress/30 bg-st-progress-wash"
-                          : isStaff
-                            ? "border-brand/20 bg-brand-wash"
-                            : "border-border bg-surface-2",
+                          : isAi
+                            ? "border-brand/35 bg-brand-wash"
+                            : isStaff
+                              ? "border-emerald-500/25 bg-emerald-50/40 dark:bg-emerald-950/20"
+                              : "border-border bg-surface-2",
                       )}
                     >
                       <div className="mb-1 flex items-center gap-2 text-[11.5px]">
-                        <Avatar name={sender?.name ?? m.sender_type} size={18} />
+                        {isAi ? (
+                          <span className="flex size-[18px] items-center justify-center rounded-full bg-brand text-white">
+                            <Bot size={11} />
+                          </span>
+                        ) : (
+                          <Avatar name={senderName} size={18} />
+                        )}
                         <span className="font-medium text-ink">
-                          {sender?.name ?? titleCase(m.sender_type)}
+                          {senderName}
                         </span>
+                        {isAi && (
+                          <span className="inline-flex items-center gap-1 rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand">
+                            <Sparkles size={9} /> First Responder
+                          </span>
+                        )}
+                        {isStaff && (
+                          <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                            <Headphones size={9} /> Support Agent
+                          </span>
+                        )}
                         {m.is_internal && (
                           <span className="inline-flex items-center gap-1 rounded bg-st-progress/15 px-1.5 py-0.5 text-[10px] font-medium text-st-progress">
                             <Lock size={9} /> Internal note
@@ -186,6 +302,20 @@ export default function TicketDetailPage({
                       <p className="whitespace-pre-wrap text-[13px] text-ink">
                         {m.content}
                       </p>
+                      {m.sources && m.sources.length > 0 && (
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-brand/15 pt-2 text-[11px] text-brand">
+                          <BookOpen size={12} />
+                          <span className="font-medium">KB Sources:</span>
+                          {m.sources.map((s: { title: string }, idx: number) => (
+                            <span
+                              key={idx}
+                              className="rounded bg-brand/10 px-1.5 py-0.5 font-mono text-[10px]"
+                            >
+                              {s.title}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })

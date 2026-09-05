@@ -18,24 +18,47 @@ def test_customer_request_live_agent(client, db):
     assert resp.status_code == 200
     conv_id = resp.json()["id"]
 
-    # 2. Request live agent handoff
+    # 2. Request live agent handoff. Live support runs in its OWN
+    #    conversation so the customer's Ask AI thread is left intact.
     resp = client.post(f"/api/v1/conversations/{conv_id}/request-agent", headers=customer_headers)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["conversation"]["status"] == "human_support"
-    assert data["conversation"]["ai_active"] is False
+    live_id = data["conversation"]["id"]
+    assert live_id != conv_id
     assert data["ticket"] is not None
     ticket_id = data["ticket"]["id"]
     assert data["conversation"]["ticket_id"] == ticket_id
 
-    # 3. Customer sends message in live chat -> verify it mirrors into ticket
+    # Whether the AI is still first responder depends on whether a human has
+    # already spoken on this thread, so that is asserted deterministically
+    # below (after an agent replies, the AI must stay out).
+
+    # 3. Replying alone deliberately does NOT take the thread off the AI -
+    #    the assistant keeps helping while the customer waits. Only an
+    #    explicit takeover hands ownership to the human.
+    agent_headers = _login(client, "agent@laurel.test", "agent1234")
+    client.post(
+        f"/api/v1/tickets/{ticket_id}/messages",
+        headers=agent_headers,
+        json={"content": "Agent here, I am picking this up."},
+    )
+    still_ai = client.post(
+        f"/api/v1/conversations/{live_id}/messages",
+        headers=customer_headers,
+        json={"content": "While I wait - where do I find my invoices?"},
+    ).json()
+    assert still_ai["ai_message"] is not None
+
+    client.patch(f"/api/v1/conversations/{live_id}/takeover", headers=agent_headers)
+
+    # 4. Customer sends message in live chat -> verify it mirrors into ticket
     resp = client.post(
-        f"/api/v1/conversations/{conv_id}/messages",
+        f"/api/v1/conversations/{live_id}/messages",
         headers=customer_headers,
         json={"content": "Hello human agent, I need urgent help!"}
     )
     assert resp.status_code == 200
-    assert resp.json()["message"] == "Message sent to human support"
+    assert resp.json()["ai_message"] is None  # human owns it, AI stays out
 
     # Verify mirrored into ticket_messages
     ticket_msgs = db.query(TicketMessage).filter(TicketMessage.ticket_id == ticket_id).all()
@@ -50,6 +73,8 @@ def test_agent_reply_sync_to_conversation(client, db):
     conv_id = conv_resp["id"]
     req_resp = client.post(f"/api/v1/conversations/{conv_id}/request-agent", headers=customer_headers).json()
     ticket_id = req_resp["ticket"]["id"]
+    # Live support has its own conversation - follow it.
+    conv_id = req_resp["conversation"]["id"]
 
     # 2. Agent replies to the ticket
     reply_resp = client.post(

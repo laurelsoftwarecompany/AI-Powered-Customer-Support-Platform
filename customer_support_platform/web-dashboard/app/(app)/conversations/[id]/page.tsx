@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft, Bot, FileText, Headphones, Send, Sparkles } from "lucide-react";
 import {
@@ -11,6 +12,8 @@ import {
   useUserMap,
 } from "@/lib/queries";
 import { useToast } from "@/components/toast";
+import { useWebSocket } from "@/lib/useWebSocket";
+import type { WsEvent } from "@/lib/useWebSocket";
 import { PageHeader } from "@/components/page-header";
 import {
   Panel,
@@ -49,8 +52,24 @@ export default function ConversationDetailPage({
   const messages = useConversationMessages(id);
   const userMap = useUserMap();
   const takeover = useTakeoverConversation(id);
+  const handback = useHandbackConversation(id);
   const send = useSendConversationMessage(id);
   const [draft, setDraft] = useState("");
+  const qc = useQueryClient();
+
+  // WebSocket: live updates for this conversation
+  useWebSocket(
+    Number.isFinite(id) ? `/ws/conversations/${id}` : null,
+    (event: WsEvent) => {
+      if (event.event === "new_message") {
+        qc.invalidateQueries({ queryKey: ["conversation", id, "messages"] });
+        qc.invalidateQueries({ queryKey: ["conversation", id] });
+      } else if (event.event === "status_change") {
+        qc.invalidateQueries({ queryKey: ["conversation", id] });
+        qc.invalidateQueries({ queryKey: ["conversations"] });
+      }
+    },
+  );
 
   if (conv.isLoading) return <DetailSkeleton />;
   if (conv.isError) return <ErrorState message={(conv.error as Error).message} />;
@@ -61,6 +80,15 @@ export default function ConversationDetailPage({
     try {
       await takeover.mutateAsync();
       notify("You've taken over this conversation from the AI.");
+    } catch (e) {
+      notify((e as Error).message, "error");
+    }
+  }
+
+  async function onHandback() {
+    try {
+      await handback.mutateAsync();
+      notify("Conversation returned to AI assistant.");
     } catch (e) {
       notify((e as Error).message, "error");
     }
@@ -114,14 +142,32 @@ export default function ConversationDetailPage({
       />
 
       <div className="mx-auto max-w-[760px]">
-        {c.ai_active && (
+        {c.ai_active ? (
           <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-brand/25 bg-brand-wash px-4 py-3">
             <p className="text-[12.5px] text-ink">
-              The AI assistant is handling this conversation. Take over to reply
-              as a human agent.
+              The AI assistant is handling this conversation. You can monitor the chat in real-time or take over whenever you wish.
             </p>
             <Button variant="primary" onClick={onTakeover} loading={takeover.isPending}>
               Take over
+            </Button>
+          </div>
+        ) : (
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-3">
+            <div className="flex items-center gap-2 text-ink text-[12.5px]">
+              <span className="flex size-2 rounded-full bg-emerald-500" />
+              <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                You are in control:
+              </span>
+              <span>Replies are delivered live to customer mobile app.</span>
+            </div>
+            <Button
+              variant="outline"
+              onClick={onHandback}
+              loading={handback.isPending}
+              className="text-[12px]"
+            >
+              <Bot size={13} className="mr-1.5" />
+              Hand back to AI
             </Button>
           </div>
         )}
@@ -135,11 +181,12 @@ export default function ConversationDetailPage({
                 const mine = m.sender_type === "agent" || m.sender_type === "admin";
                 const isAI = m.sender_type === "ai";
                 const sender =
-                  m.sender_type === "customer"
+                  m.sender_name ??
+                  (m.sender_type === "customer"
                     ? (customer?.name ?? "Customer")
                     : isAI
-                      ? "AI Assistant"
-                      : "Support agent";
+                      ? "Laurel AI Assistant"
+                      : "Support Specialist");
                 return (
                   <div
                     key={m.id}

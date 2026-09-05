@@ -30,6 +30,11 @@ class Message(Base):
         nullable=False
     )
 
+    sender_name: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True
+    )
+
     content: Mapped[str] = mapped_column(
         Text,
         nullable=False

@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../auth/bloc/auth_state.dart';
 import '../../auth/data/user_model.dart';
+import '../../tickets/data/ticket_model.dart';
 import '../../tickets/presentation/create_ticket_screen.dart';
 import '../../tickets/presentation/ticket_list_screen.dart';
 import 'dashboard_screen.dart';
@@ -27,6 +28,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   int _currentIndex = 0;
   bool _isLiveAgentMode = false;
   String? _selectedTicketId;
+  TicketModel? _activeLiveTicket;
 
   late AnimationController _animController;
 
@@ -43,6 +45,27 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   void dispose() {
     _animController.dispose();
     super.dispose();
+  }
+
+  void _showLiveAgentSelector(BuildContext context) {
+    LiveAgentWaitingSheet.show(
+      context,
+      initialSelectedTicket: _activeLiveTicket,
+      onProceedToChat: (selectedTicket) {
+        setState(() {
+          _activeLiveTicket = selectedTicket;
+          _isLiveAgentMode = true;
+          _currentIndex = 1;
+        });
+      },
+      onViewTicketDetails: (ticket) {
+        setState(() {
+          _selectedTicketId = ticket.id;
+          _isLiveAgentMode = false;
+          _currentIndex = 3;
+        });
+      },
+    );
   }
 
   @override
@@ -64,8 +87,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       AIChatScreen(
         user: currentUser,
         isLiveAgent: _isLiveAgentMode,
+        ticket: _activeLiveTicket,
+        onChangeTicket: () => _showLiveAgentSelector(context),
         onBack: () => setState(() {
           _isLiveAgentMode = false;
+          _activeLiveTicket = null;
           _currentIndex = 0;
         }),
         onLogTicket: () => setState(() => _currentIndex = 2),
@@ -86,6 +112,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           _selectedTicketId = null;
           _isLiveAgentMode = (index == 1);
           _currentIndex = index;
+        }),
+        onOpenLiveChat: (ticket) => setState(() {
+          _selectedTicketId = null;
+          _activeLiveTicket = ticket;
+          _isLiveAgentMode = true;
+          _currentIndex = 1;
         }),
       ),
       AlertsScreen(
@@ -200,17 +232,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                       isSelected: _currentIndex == 1 && _isLiveAgentMode,
                     ),
                   ),
-                  onTap: () {
-                    LiveAgentWaitingSheet.show(
-                      context,
-                      onProceedToChat: () {
-                        setState(() {
-                          _isLiveAgentMode = true;
-                          _currentIndex = 1;
-                        });
-                      },
-                    );
-                  },
+                  onTap: () => _showLiveAgentSelector(context),
                 ),
               ],
             );

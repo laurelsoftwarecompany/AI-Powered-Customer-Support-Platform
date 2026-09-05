@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'core/network/api_client.dart';
+import 'core/network/websocket_service.dart';
 import 'core/storage/token_storage.dart';
 import 'features/auth/bloc/auth_bloc.dart';
 import 'features/auth/bloc/auth_event.dart';
@@ -35,8 +36,11 @@ void main() {
     useMock: useMockData,
   );
 
+  final wsService = WebSocketService(tokenStorage: tokenStorage);
+
   final chatRepository = ChatRepository(
     apiClient: apiClient,
+    wsService: wsService,
     useMock: useMockData,
   );
 
@@ -81,7 +85,10 @@ class CustomerSupportApp extends StatelessWidget {
         providers: [
           BlocProvider<AuthBloc>(
             create: (_) =>
-                AuthBloc(authRepository: authRepository)
+                AuthBloc(
+                  authRepository: authRepository,
+                  chatRepository: chatRepository,
+                )
                   ..add(AppStartedEvent()),
           ),
           BlocProvider<TicketBloc>(

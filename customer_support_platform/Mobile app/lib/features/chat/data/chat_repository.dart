@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/websocket_service.dart';
 import '../../tickets/data/ticket_model.dart';
 import 'chat_model.dart';
 
@@ -13,60 +15,165 @@ import 'chat_model.dart';
 /// with no backend running.
 class ChatRepository {
   final ApiClient? apiClient;
+  final WebSocketService? wsService;
   final bool useMock;
 
   int? _conversationId;
   int? _linkedTicketId;
   bool _handedToHuman = false;
 
-  ChatRepository({this.apiClient, this.useMock = false});
+  /// Stream controller for real-time message updates via WebSocket.
+  final _messageStreamController =
+      StreamController<List<ChatMessage>>.broadcast();
+
+  /// The current full message list (welcome + history + live).
+  List<ChatMessage> _currentMessages = [];
+
+  StreamSubscription? _wsSubscription;
+
+  ChatRepository({this.apiClient, this.wsService, this.useMock = false});
 
   /// True once the assistant has escalated and a human owns the conversation.
   bool get handedToHuman => _handedToHuman;
+  bool get isAiActive => !_handedToHuman;
   int? get linkedTicketId => _linkedTicketId;
   int? get conversationId => _conversationId;
+
+  /// Real-time message stream — UI subscribes to this instead of polling.
+  Stream<List<ChatMessage>> get messageStream => _messageStreamController.stream;
 
   void reset() {
     _conversationId = null;
     _linkedTicketId = null;
     _handedToHuman = false;
+    _currentMessages = [];
+    _disconnectWs();
   }
 
-  /// Resume the customer's most recent conversation and replay its history.
-  ///
-  /// Without this the app opened a brand-new conversation on every launch, so
-  /// the customer never saw their own history - or any reply an agent posted
-  /// from the web dashboard after the AI handed off.
-  Future<List<ChatMessage>> loadHistory(String userName) async {
+  /// Load the customer's standalone Ask AI conversation and its messages.
+  Future<List<ChatMessage>> loadAskAiHistory(String userName) async {
     if (useMock || apiClient == null) return getInitialMessages(userName);
 
     try {
       final dio = _requireClient();
+      final res = await dio.get('/conversations/ask-ai');
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final id = data['id'] as int;
 
-      final list = await dio.get('/conversations/my');
-      final raw = list.data;
-      if (raw is! List || raw.isEmpty) return getInitialMessages(userName);
-
-      // /conversations/my comes back newest-first.
-      final latest = Map<String, dynamic>.from(raw.first as Map);
-      final id = latest['id'] as int;
       _conversationId = id;
-      _handedToHuman = latest['ai_active'] == false;
-      _linkedTicketId = latest['ticket_id'] as int?;
+      _linkedTicketId = null;
+      _handedToHuman = false;
 
       final history = await dio.get('/conversations/$id/messages');
       final rows = history.data;
-      if (rows is! List || rows.isEmpty) return getInitialMessages(userName);
+      if (rows is! List || rows.isEmpty) {
+        _currentMessages = getInitialMessages(userName);
+      } else {
+        final messages = rows
+            .map((r) => _historyMessage(Map<String, dynamic>.from(r)))
+            .toList();
+        _currentMessages = [...getInitialMessages(userName), ...messages];
+      }
 
-      final messages = rows
-          .map((r) => _historyMessage(Map<String, dynamic>.from(r)))
-          .toList();
-      return [...getInitialMessages(userName), ...messages];
+      _connectWs();
+      return _currentMessages;
     } on DioException {
-      // Offline or server down - still show the greeting rather than a blank
-      // screen; the error surfaces when they actually send something.
       return getInitialMessages(userName);
     }
+  }
+
+  /// Start a brand new standalone Ask AI conversation (New Chat).
+  Future<List<ChatMessage>> startNewAskAiChat(String userName) async {
+    if (useMock || apiClient == null) {
+      _currentMessages = getInitialMessages(userName);
+      return _currentMessages;
+    }
+
+    try {
+      final dio = _requireClient();
+      final res = await dio.post('/conversations/ask-ai/new');
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final id = data['id'] as int;
+
+      _conversationId = id;
+      _linkedTicketId = null;
+      _handedToHuman = false;
+      _currentMessages = getInitialMessages(userName);
+
+      _connectWs();
+      return _currentMessages;
+    } catch (_) {
+      _currentMessages = getInitialMessages(userName);
+      return _currentMessages;
+    }
+  }
+
+  /// Load a ticket's dedicated live chat conversation and messages.
+  Future<List<ChatMessage>> loadTicketChat(
+    int ticketId,
+    String userName,
+  ) async {
+    if (useMock || apiClient == null) return [];
+
+    try {
+      final dio = _requireClient();
+      final res = await dio.get('/conversations/ticket/$ticketId');
+      final body = Map<String, dynamic>.from(res.data as Map);
+      final conv = Map<String, dynamic>.from(body['conversation'] as Map);
+      final id = conv['id'] as int;
+
+      _conversationId = id;
+      _linkedTicketId = ticketId;
+      _handedToHuman = conv['ai_active'] == false;
+
+      final history = await dio.get('/conversations/$id/messages');
+      final rows = history.data;
+      if (rows is! List || rows.isEmpty) {
+        _currentMessages = [];
+      } else {
+        _currentMessages = rows
+            .map((r) => _historyMessage(Map<String, dynamic>.from(r)))
+            .toList();
+      }
+
+      _connectWs();
+      return _currentMessages;
+    } on DioException {
+      return [];
+    }
+  }
+
+  /// Resume the customer's standalone Ask AI conversation.
+  Future<List<ChatMessage>> loadHistory(String userName) async {
+    return loadAskAiHistory(userName);
+  }
+
+  /// The backend stores naive UTC (`2026-09-05T08:17:38`, no zone marker),
+  /// which `DateTime.parse` would read as *local* time - showing every server
+  /// message hours off, and breaking any time-based comparison against
+  /// locally created messages. Treat a zone-less stamp as UTC.
+  static DateTime _parseServerTime(dynamic raw, {DateTime? fallback}) {
+    final text = raw?.toString();
+    if (text == null || text.isEmpty) return fallback ?? DateTime.now();
+
+    final hasZone = text.endsWith('Z') ||
+        RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(text);
+    final parsed = DateTime.tryParse(hasZone ? text : '${text}Z');
+    return parsed?.toLocal() ?? fallback ?? DateTime.now();
+  }
+
+  /// Append a message the UI created locally (an optimistic echo of what the
+  /// customer just sent, or a reply already returned over HTTP) so the
+  /// repository list stays the single source of truth. Without this the WS
+  /// echo of the same message has nothing to reconcile against and renders
+  /// a second copy.
+  List<ChatMessage> addLocalMessage(ChatMessage message) {
+    final alreadyThere = _currentMessages.any((m) => m.id == message.id);
+    if (!alreadyThere) {
+      _currentMessages = [..._currentMessages, message];
+      _messageStreamController.add(_currentMessages);
+    }
+    return _currentMessages;
   }
 
   ChatMessage _historyMessage(Map<String, dynamic> m) {
@@ -74,17 +181,20 @@ class ChatRepository {
     final isCustomer = senderType == 'customer';
     final isAi = senderType == 'ai';
     final confidence = m['confidence'];
+    final rawSenderName = m['sender_name']?.toString();
+
+    final senderName = isCustomer
+        ? 'You'
+        : (rawSenderName != null && rawSenderName.isNotEmpty
+            ? rawSenderName
+            : (isAi ? 'Laurel AI Assistant' : 'Support Specialist'));
 
     return ChatMessage(
       id: m['id']?.toString() ?? '',
       sender: isCustomer ? 'customer' : (isAi ? 'ai' : 'agent'),
-      senderName: isCustomer
-          ? 'You'
-          : (isAi ? 'Laurel AI Assistant' : 'Support Team'),
+      senderName: senderName,
       text: (m['content'] ?? '').toString(),
-      timestamp: m['created_at'] != null
-          ? DateTime.tryParse(m['created_at'].toString()) ?? DateTime.now()
-          : DateTime.now(),
+      timestamp: _parseServerTime(m['created_at']),
       intent: isAi ? _prettyIntent(m['intent']) : null,
       confidenceScore: isAi && confidence is num ? confidence.toDouble() : null,
       kbSources: isAi ? _sourcesFrom(m['sources']) : null,
@@ -110,6 +220,7 @@ class ChatRepository {
   }
 
   /// Poll new messages without replacing greeting or throwing errors.
+  /// Kept as a fallback but WebSocket is the primary real-time channel.
   Future<List<ChatMessage>?> pollMessages(String userName) async {
     if (useMock || apiClient == null || _conversationId == null) return null;
     try {
@@ -120,9 +231,64 @@ class ChatRepository {
       final messages = rows
           .map((r) => _historyMessage(Map<String, dynamic>.from(r)))
           .toList();
-      return [...getInitialMessages(userName), ...messages];
+      _currentMessages = [...getInitialMessages(userName), ...messages];
+      return _currentMessages;
     } catch (_) {
       return null;
+    }
+  }
+
+  // --------------------------------------------------------- WebSocket
+
+  void _connectWs() {
+    if (useMock || wsService == null || _conversationId == null) return;
+
+    _wsSubscription?.cancel();
+    _wsSubscription = wsService!.events.listen(_onWsEvent);
+    wsService!.connect('/ws/conversations/$_conversationId');
+  }
+
+  void _disconnectWs() {
+    _wsSubscription?.cancel();
+    _wsSubscription = null;
+    wsService?.disconnect();
+  }
+
+  void _onWsEvent(Map<String, dynamic> event) {
+    final type = event['event'];
+
+    if (type == 'new_message') {
+      final msgData = event['message'];
+      if (msgData is Map<String, dynamic>) {
+        final msg = _historyMessage(msgData);
+
+        // Already have the server copy - nothing to do.
+        if (_currentMessages.any((m) => m.id == msg.id)) return;
+
+        // The sender shows its own message immediately, before the server has
+        // given it an id, so the echo arrives with a different id. Reconcile
+        // that optimistic entry in place instead of appending a second copy.
+        final pending = _currentMessages.indexWhere((m) =>
+            m.id.startsWith('temp-') &&
+            m.sender == msg.sender &&
+            m.text == msg.text);
+
+        if (pending != -1) {
+          final merged = [..._currentMessages];
+          merged[pending] = msg;
+          _currentMessages = merged;
+        } else {
+          _currentMessages = [..._currentMessages, msg];
+        }
+        _messageStreamController.add(_currentMessages);
+      }
+    } else if (type == 'status_change') {
+      final aiActive = event['ai_active'];
+      if (aiActive != null) {
+        _handedToHuman = (aiActive == false);
+        // Notify UI about the status change
+        _messageStreamController.add(_currentMessages);
+      }
     }
   }
 
@@ -141,9 +307,14 @@ class ChatRepository {
         data: {'content': query},
       );
 
-      return _messageFromResponse(
+      final result = _messageFromResponse(
         Map<String, dynamic>.from(response.data as Map),
       );
+
+      // Ensure WebSocket is connected for follow-up messages
+      _connectWs();
+
+      return result;
     } on DioException catch (e) {
       throw Exception(
         _errorMessage(e, 'The assistant is unavailable right now.'),
@@ -171,6 +342,14 @@ class ChatRepository {
       final convId = await _ensureConversation();
       final resp = await dio.post('/conversations/$convId/request-agent');
       final body = Map<String, dynamic>.from(resp.data as Map);
+
+      // Live support runs in its own conversation so the Ask AI thread stays
+      // pure AI - switch to whichever conversation the backend handed back.
+      final conv = body['conversation'];
+      if (conv is Map && conv['id'] is int) {
+        _conversationId = conv['id'] as int;
+      }
+
       _handedToHuman = true;
       final ticket = body['ticket'];
       if (ticket is Map) {
@@ -178,6 +357,9 @@ class ChatRepository {
       }
       final ticketNum =
           _linkedTicketId != null ? TicketModel.numberFor(_linkedTicketId!) : '';
+
+      // Ensure WebSocket is connected for live agent replies
+      _connectWs();
 
       return ChatMessage(
         id: 'handoff_${DateTime.now().millisecondsSinceEpoch}',
@@ -216,7 +398,7 @@ class ChatRepository {
       final body = Map<String, dynamic>.from(resp.data as Map);
       final conv = Map<String, dynamic>.from(body['conversation'] as Map);
       _conversationId = conv['id'] as int;
-      _handedToHuman = true;
+      _handedToHuman = conv['ai_active'] == false;
       final ticket = body['ticket'];
       if (ticket is Map) {
         _linkedTicketId = ticket['id'] as int?;
@@ -224,14 +406,29 @@ class ChatRepository {
       final ticketNum =
           _linkedTicketId != null ? TicketModel.numberFor(_linkedTicketId!) : '';
 
+      // Connect WebSocket for live agent replies
+      _connectWs();
+
+      if (!_handedToHuman) {
+        return ChatMessage(
+          id: 'live_ai_${DateTime.now().millisecondsSinceEpoch}',
+          sender: 'ai',
+          senderName: 'Laurel AI Assistant',
+          text:
+              'You are connected to Live Support! ${ticketNum.isNotEmpty ? 'Ticket $ticketNum is assigned. ' : ''}'
+              'I am answering as your first responder while a human specialist prepares to connect.',
+          timestamp: DateTime.now(),
+        );
+      }
+
       return ChatMessage(
         id: 'live_agent_${DateTime.now().millisecondsSinceEpoch}',
         sender: 'agent',
-        senderName: 'Support Team',
+        senderName: 'Support Specialist',
         text:
             'You are connected to our Live Support Team. '
-            '${ticketNum.isNotEmpty ? 'Ticket $ticketNum is open for this session. ' : ''}'
-            'A specialist will assist you shortly.',
+            '${ticketNum.isNotEmpty ? 'Ticket $ticketNum is active. ' : ''}'
+            'A human specialist has control of this session.',
         timestamp: DateTime.now(),
       );
     } on DioException catch (e) {
@@ -271,13 +468,12 @@ class ChatRepository {
     if (ai == null) {
       _handedToHuman = true;
       return ChatMessage(
-        id: 'handoff_${now.millisecondsSinceEpoch}',
-        sender: 'agent',
-        senderName: 'Support Team',
+        id: 'system_${now.millisecondsSinceEpoch}',
+        sender: 'system',
+        senderName: 'System Notice',
         text:
             body['message'] ??
-            'Your message has been sent to the support team. An agent will '
-                'reply here shortly.',
+            'Message delivered to support specialists. An agent will reply here shortly.',
         timestamp: now,
       );
     }
@@ -305,9 +501,7 @@ class ChatRepository {
       sender: 'ai',
       senderName: 'Laurel AI Assistant',
       text: text,
-      timestamp: aiMessage['created_at'] != null
-          ? DateTime.tryParse(aiMessage['created_at'].toString()) ?? now
-          : now,
+      timestamp: _parseServerTime(aiMessage['created_at'], fallback: now),
       intent: _prettyIntent(aiMessage['intent']),
       confidenceScore: confidence is num ? confidence.toDouble() : null,
       kbSources: _sourcesFrom(body['sources'] ?? aiMessage['sources']),

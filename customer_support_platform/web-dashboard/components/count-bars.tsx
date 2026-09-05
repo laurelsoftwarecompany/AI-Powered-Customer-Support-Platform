@@ -14,8 +14,8 @@ export function CountBars({ rows }: { rows: CountRow[] }) {
 
   return (
     <div className="flex flex-col gap-2.5 px-4 py-4">
-      {rows.map((r) => (
-        <div key={r.label} className="grid grid-cols-[128px_1fr_2.5rem] items-center gap-3">
+      {rows.map((r, idx) => (
+        <div key={`${r.label}-${idx}`} className="grid grid-cols-[128px_1fr_2.5rem] items-center gap-3">
           <span className="truncate text-[12px] text-ink-soft" title={r.label}>
             {r.label}
           </span>

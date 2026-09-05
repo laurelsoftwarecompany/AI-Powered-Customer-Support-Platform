@@ -274,6 +274,17 @@ def _passage_from_context(context: str, limit: int = 700) -> str:
     text = re.sub(r"(?m)^\[\d+\][^\n]*\n?", "", context)
     text = text.replace("**", "").replace("#", "")
     text = " ".join(text.split())
+
+    # Chunk boundaries fall mid-sentence, so a passage can open with a
+    # fragment ("e the eta of my order..."). Drop that opening fragment, as
+    # long as doing so does not throw away most of the passage.
+    if text and not text[0].isupper():
+        for sep in (". ", "! ", "? "):
+            idx = text.find(sep)
+            if 0 <= idx < limit * 0.4:
+                text = text[idx + len(sep):].lstrip()
+                break
+
     if len(text) <= limit:
         return text
     cut = text[:limit]
