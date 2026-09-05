@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Text, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Text, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -8,6 +8,11 @@ from app.database.base import Base
 
 class TicketMessage(Base):
     __tablename__ = "ticket_messages"
+
+    # A ticket thread is always read as "this ticket, oldest first".
+    __table_args__ = (
+        Index("ix_ticket_messages_ticket_created", "ticket_id", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(
         primary_key=True,

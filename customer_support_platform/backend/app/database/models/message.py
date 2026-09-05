@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -8,6 +8,11 @@ from app.database.base import Base
 
 class Message(Base):
     __tablename__ = "messages"
+
+    # Reading a chat is always "this conversation, oldest first".
+    __table_args__ = (
+        Index("ix_messages_conversation_created", "conversation_id", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(
         primary_key=True,

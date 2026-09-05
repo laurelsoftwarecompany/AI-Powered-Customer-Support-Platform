@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -25,6 +25,13 @@ class TicketPriority(str, enum.Enum):
 
 class Ticket(Base):
     __tablename__ = "tickets"
+
+    # Every list view is "my tickets, newest first" or "queue filtered by
+    # status, newest first" - index the pairs those actually scan.
+    __table_args__ = (
+        Index("ix_tickets_customer_updated", "customer_id", "updated_at"),
+        Index("ix_tickets_status_updated", "status", "updated_at"),
+    )
 
     id: Mapped[int] = mapped_column(
         Integer,

@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import io
 import re
+import threading
 
 import numpy as np
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -150,6 +152,7 @@ def reindex(db: Session, document_id: int | None = None, batch: int = 128) -> in
             chunk.embedding = vector
         db.commit()
 
+    invalidate_index()
     return len(chunks)
 
 
@@ -173,44 +176,125 @@ def index_status(db: Session, document_id: int) -> tuple[int, int]:
 
 # ---------------------------------------------------------------- retrieval
 
+# ------------------------------------------------------------- search index
+#
+# Loading + JSON-decoding every embedding on each question dominated retrieval
+# (~250 ms of a ~300 ms search at 417 chunks, and it grows linearly with the
+# knowledge base). The normalized matrix is built once and reused.
+#
+# Rather than asking every mutation path to remember to invalidate, the cache
+# is keyed on a cheap aggregate signature of the corpus - a few sub-millisecond
+# COUNT/MAX queries - so it self-heals no matter who changes what.
+
+_index_lock = threading.Lock()
+_index_cache: dict | None = None
+
+
+def _corpus_signature(db: Session) -> tuple:
+    embedded = (
+        db.query(func.count(KnowledgeChunk.id))
+        .filter(KnowledgeChunk.embedding.isnot(None))
+        .scalar()
+    )
+    max_chunk = db.query(func.max(KnowledgeChunk.id)).scalar()
+    active_docs = (
+        db.query(func.count(KnowledgeDocument.id))
+        .filter(KnowledgeDocument.status == "active")
+        .scalar()
+    )
+    last_touched = db.query(func.max(KnowledgeDocument.updated_at)).scalar()
+    return (embedded, max_chunk, active_docs, str(last_touched))
+
+
+def _load_index(db: Session) -> dict:
+    """Build (or reuse) the normalized embedding matrix and its chunk metadata."""
+    global _index_cache
+
+    signature = _corpus_signature(db)
+    cached = _index_cache
+    if cached is not None and cached["signature"] == signature:
+        return cached
+
+    with _index_lock:
+        # Re-check: another request may have rebuilt it while we waited.
+        cached = _index_cache
+        if cached is not None and cached["signature"] == signature:
+            return cached
+
+        rows = (
+            db.query(
+                KnowledgeChunk.chunk_index,
+                KnowledgeChunk.content,
+                KnowledgeChunk.embedding,
+                KnowledgeDocument.id,
+                KnowledgeDocument.title,
+            )
+            .join(
+                KnowledgeDocument,
+                KnowledgeChunk.document_id == KnowledgeDocument.id,
+            )
+            .filter(
+                KnowledgeChunk.embedding.isnot(None),
+                KnowledgeDocument.status == "active",
+            )
+            .all()
+        )
+
+        if not rows:
+            index = {"signature": signature, "matrix": None, "meta": []}
+        else:
+            matrix = np.array([r[2] for r in rows], dtype=np.float32)
+            # Normalize once at build time, not per query.
+            matrix /= np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-9
+            index = {
+                "signature": signature,
+                "matrix": matrix,
+                "meta": [
+                    {
+                        "document_id": r[3],
+                        "document_title": r[4],
+                        "chunk_index": r[0],
+                        "content": r[1],
+                    }
+                    for r in rows
+                ],
+            }
+
+        _index_cache = index
+        return index
+
+
+def invalidate_index() -> None:
+    """Drop the cached matrix (called after ingestion; the signature check
+    would catch it anyway, this just avoids one stale-read window)."""
+    global _index_cache
+    _index_cache = None
+
+
 def search(db: Session, query: str, top_k: int | None = None) -> list[dict]:
     """Return the top-k most relevant active chunks for a query, with scores."""
     top_k = top_k or settings.RAG_TOP_K
 
-    rows = (
-        db.query(KnowledgeChunk, KnowledgeDocument)
-        .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
-        .filter(
-            KnowledgeChunk.embedding.isnot(None),
-            KnowledgeDocument.status == "active",
-        )
-        .all()
-    )
-    if not rows:
+    index = _load_index(db)
+    matrix = index["matrix"]
+    if matrix is None:
         return []
 
-    matrix = np.array([chunk.embedding for chunk, _ in rows], dtype=np.float32)
     q_vec = np.asarray(_embed_query(query), dtype=np.float32)
+    q_vec /= np.linalg.norm(q_vec) + 1e-9
 
     # bge embeddings are L2-normalized, so a dot product is cosine similarity.
-    matrix /= np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-9
-    q_vec /= np.linalg.norm(q_vec) + 1e-9
     scores = matrix @ q_vec
 
-    order = np.argsort(scores)[::-1][:top_k]
-    results = []
-    for idx in order:
-        chunk, doc = rows[int(idx)]
-        results.append(
-            {
-                "document_id": doc.id,
-                "document_title": doc.title,
-                "chunk_index": chunk.chunk_index,
-                "content": chunk.content,
-                "score": round(float(scores[idx]), 4),
-            }
-        )
-    return results
+    # argpartition finds the top-k without sorting the whole corpus.
+    k = min(top_k, scores.shape[0])
+    top = np.argpartition(scores, -k)[-k:]
+    order = top[np.argsort(scores[top])[::-1]]
+
+    return [
+        {**index["meta"][int(i)], "score": round(float(scores[i]), 4)}
+        for i in order
+    ]
 
 
 def _snippet(text: str, limit: int = 240) -> str:

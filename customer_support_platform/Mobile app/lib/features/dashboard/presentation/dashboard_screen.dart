@@ -728,7 +728,7 @@ class _DashboardContentState extends State<DashboardContent>
             ),
             SizedBox(width: 5),
             Text(
-              'Recent AI Conversations',
+              'AI Assistant',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
@@ -738,9 +738,12 @@ class _DashboardContentState extends State<DashboardContent>
           ],
         ),
         const SizedBox(height: 10),
+        // Opens the chat, which restores the customer's real conversation
+        // history. It used to advertise a canned conversation that never
+        // happened.
         _buildConversationTile(
-          title: 'How to configure custom webhook?',
-          snippet: 'You can add webhook headers in Settings → Integrations.',
+          title: 'Continue your conversation',
+          snippet: 'Ask about an order, refund, billing or your account.',
           onTap: () => widget.onNavigateTab?.call(1),
         ),
       ],

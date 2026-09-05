@@ -59,8 +59,19 @@ def create_user(
     email: str,
     password: str,
     role: UserRole = UserRole.CUSTOMER,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    # Customers self-register via POST /auth/register. This endpoint creates
+    # staff accounts (or customers on an admin's behalf) and is admin-only -
+    # it must never be reachable by an unauthenticated caller who could
+    # otherwise pick role=admin for themselves.
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators can create users"
+        )
+
     # Check if email already exists
     existing_user = db.query(User).filter(
         User.email == email

@@ -575,7 +575,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Ticket $_submittedTicketNumber has been logged in Laurel Systems and assigned to Support Agent Marcus Vance.',
+              'Ticket $_submittedTicketNumber has been logged. Our support team will review it and reply in the ticket thread.',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 12,

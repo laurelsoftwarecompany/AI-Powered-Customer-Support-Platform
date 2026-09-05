@@ -28,6 +28,64 @@ class ChatRepository {
     _handedToHuman = false;
   }
 
+  /// Resume the customer's most recent conversation and replay its history.
+  ///
+  /// Without this the app opened a brand-new conversation on every launch, so
+  /// the customer never saw their own history - or any reply an agent posted
+  /// from the web dashboard after the AI handed off.
+  Future<List<ChatMessage>> loadHistory(String userName) async {
+    if (useMock || apiClient == null) return getInitialMessages(userName);
+
+    try {
+      final dio = _requireClient();
+
+      final list = await dio.get('/conversations/my');
+      final raw = list.data;
+      if (raw is! List || raw.isEmpty) return getInitialMessages(userName);
+
+      // /conversations/my comes back newest-first.
+      final latest = Map<String, dynamic>.from(raw.first as Map);
+      final id = latest['id'] as int;
+      _conversationId = id;
+      _handedToHuman = latest['ai_active'] == false;
+
+      final history = await dio.get('/conversations/$id/messages');
+      final rows = history.data;
+      if (rows is! List || rows.isEmpty) return getInitialMessages(userName);
+
+      final messages = rows
+          .map((r) => _historyMessage(Map<String, dynamic>.from(r)))
+          .toList();
+      return [...getInitialMessages(userName), ...messages];
+    } on DioException {
+      // Offline or server down - still show the greeting rather than a blank
+      // screen; the error surfaces when they actually send something.
+      return getInitialMessages(userName);
+    }
+  }
+
+  ChatMessage _historyMessage(Map<String, dynamic> m) {
+    final senderType = (m['sender_type'] ?? 'ai').toString();
+    final isCustomer = senderType == 'customer';
+    final isAi = senderType == 'ai';
+    final confidence = m['confidence'];
+
+    return ChatMessage(
+      id: m['id']?.toString() ?? '',
+      sender: isCustomer ? 'customer' : (isAi ? 'ai' : 'agent'),
+      senderName: isCustomer
+          ? 'You'
+          : (isAi ? 'Laurel AI Assistant' : 'Support Team'),
+      text: (m['content'] ?? '').toString(),
+      timestamp: m['created_at'] != null
+          ? DateTime.tryParse(m['created_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      intent: isAi ? _prettyIntent(m['intent']) : null,
+      confidenceScore: isAi && confidence is num ? confidence.toDouble() : null,
+      kbSources: isAi ? _sourcesFrom(m['sources']) : null,
+    );
+  }
+
   List<ChatMessage> getInitialMessages(String userName) {
     final firstName = userName.trim().isEmpty
         ? 'there'

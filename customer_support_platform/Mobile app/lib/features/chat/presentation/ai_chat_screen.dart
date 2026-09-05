@@ -43,6 +43,27 @@ class _AIChatScreenState extends State<AIChatScreen> {
     super.initState();
     _repository = context.read<ChatRepository>();
     _messages = _repository.getInitialMessages(widget.user?.name ?? 'Customer');
+    _restoreHistory();
+  }
+
+  /// Replay the existing conversation (including anything an agent replied
+  /// with after a handoff) instead of starting from a blank screen.
+  Future<void> _restoreHistory() async {
+    setState(() => _isLoading = true);
+    try {
+      final history = await _repository.loadHistory(
+        widget.user?.name ?? 'Customer',
+      );
+      if (!mounted) return;
+      setState(() {
+        _messages = history;
+        _isLoading = false;
+        if (_repository.handedToHuman) _status = 'agent_takeover';
+      });
+      _scrollToBottom();
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override

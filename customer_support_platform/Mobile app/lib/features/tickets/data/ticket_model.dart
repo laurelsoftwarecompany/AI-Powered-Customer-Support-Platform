@@ -37,6 +37,7 @@ class TicketModel {
   final String priority;
   final String status;
   final String assignedAgentName;
+  final int? assignedAgentId;
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<TicketTimelineEvent> timeline;
@@ -51,6 +52,7 @@ class TicketModel {
     required this.priority,
     required this.status,
     this.assignedAgentName = 'Unassigned',
+    this.assignedAgentId,
     required this.createdAt,
     required this.updatedAt,
     List<TicketTimelineEvent>? timeline,
@@ -114,6 +116,7 @@ class TicketModel {
       // directory is staff-only - so show assignment state, not a fake name.
       assignedAgentName: json['assigned_agent_name'] ??
           (agentId == null ? 'Unassigned' : 'Support Team'),
+      assignedAgentId: agentId is int ? agentId : int.tryParse('$agentId'),
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),

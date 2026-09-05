@@ -14,10 +14,12 @@ class KnowledgeDocument(Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_type: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # Every retrieval filters to active documents.
     status: Mapped[str] = mapped_column(
         String(30),
         nullable=False,
         default="active",
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

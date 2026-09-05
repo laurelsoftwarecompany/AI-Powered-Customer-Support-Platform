@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../tickets/bloc/ticket_bloc.dart';
+import '../../tickets/bloc/ticket_state.dart';
+import '../../tickets/data/ticket_model.dart';
 
 class AppNotificationModel {
   final String id;
@@ -34,53 +38,69 @@ class AlertsScreen extends StatefulWidget {
 }
 
 class _AlertsScreenState extends State<AlertsScreen> {
-  final List<AppNotificationModel> _notifications = [
-    AppNotificationModel(
-      id: 'notif-1',
-      title: 'New Reply on Ticket #TICK-802',
-      message:
-          'Support staff sent a troubleshooting message regarding your session.',
-      type: 'ticket_reply',
-      timestamp: DateTime.now().subtract(const Duration(minutes: 15)),
-      read: false,
-      ticketId: '1',
-    ),
-    AppNotificationModel(
-      id: 'notif-2',
-      title: 'Agent Assigned to Ticket #TICK-802',
-      message:
-          'Marcus Vance was assigned to investigate your password reset issue.',
-      type: 'agent_takeover',
-      timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-      read: false,
-      ticketId: '1',
-    ),
-    AppNotificationModel(
-      id: 'notif-3',
-      title: 'Ticket #TICK-799 Resolved',
-      message:
-          'Your billing refund request was successfully approved and closed.',
-      type: 'status_change',
-      timestamp: DateTime.now().subtract(const Duration(days: 1)),
-      read: true,
-      ticketId: '3',
-    ),
-    AppNotificationModel(
-      id: 'notif-4',
-      title: 'AI Chat Escalated',
-      message:
-          'Your chat session regarding sync endpoints has been linked to a support ticket.',
-      type: 'ai_escalation',
-      timestamp: DateTime.now().subtract(const Duration(days: 2)),
-      read: true,
-      conversationId: 'conv-1',
-    ),
-  ];
+  /// Notifications are derived from the customer's real tickets rather than a
+  /// canned list - previously this screen announced replies and agent
+  /// assignments on tickets that did not exist for the signed-in user.
+  List<AppNotificationModel> _notifications = [];
+  final Set<String> _readIds = {};
+
+  List<AppNotificationModel> _deriveNotifications(List<TicketModel> tickets) {
+    final items = <AppNotificationModel>[];
+
+    for (final t in tickets) {
+      final wasUpdated = t.updatedAt.isAfter(
+        t.createdAt.add(const Duration(seconds: 5)),
+      );
+
+      if (t.status == 'Resolved' || t.status == 'Closed') {
+        items.add(
+          AppNotificationModel(
+            id: 'status-${t.id}',
+            title: 'Ticket ${t.ticketNumber} ${t.status}',
+            message: '"${t.subject}" was marked ${t.status.toLowerCase()}.',
+            type: 'status_change',
+            timestamp: t.updatedAt,
+            read: _readIds.contains('status-${t.id}'),
+            ticketId: t.id,
+          ),
+        );
+      } else if (t.status == 'In Progress' ||
+          t.status == 'Waiting for Customer') {
+        items.add(
+          AppNotificationModel(
+            id: 'progress-${t.id}',
+            title: 'Update on ${t.ticketNumber}',
+            message: '"${t.subject}" is now ${t.status.toLowerCase()}.',
+            type: 'ticket_reply',
+            timestamp: t.updatedAt,
+            read: _readIds.contains('progress-${t.id}'),
+            ticketId: t.id,
+          ),
+        );
+      } else if (wasUpdated) {
+        items.add(
+          AppNotificationModel(
+            id: 'activity-${t.id}',
+            title: 'Activity on ${t.ticketNumber}',
+            message: 'There is new activity on "${t.subject}".',
+            type: 'ticket_reply',
+            timestamp: t.updatedAt,
+            read: _readIds.contains('activity-${t.id}'),
+            ticketId: t.id,
+          ),
+        );
+      }
+    }
+
+    items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return items;
+  }
 
   void _markAllAsRead() {
     setState(() {
       for (var notif in _notifications) {
         notif.read = true;
+        _readIds.add(notif.id);
       }
     });
   }
@@ -126,6 +146,11 @@ class _AlertsScreenState extends State<AlertsScreen> {
   Widget build(BuildContext context) {
     const primaryIndigo = Color(0xFF4F46E5);
     const bgColor = Color(0xFFF8FAFC);
+
+    final ticketState = context.watch<TicketBloc>().state;
+    _notifications = ticketState is TicketLoaded
+        ? _deriveNotifications(ticketState.tickets)
+        : const [];
 
     return Scaffold(
       backgroundColor: bgColor,

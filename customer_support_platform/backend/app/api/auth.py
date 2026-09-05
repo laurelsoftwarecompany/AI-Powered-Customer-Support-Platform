@@ -4,11 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import jwt
 from pwdlib import PasswordHash
+from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database.connection import get_db
-from app.database.models.user import User
+from app.database.models.user import User, UserRole
 
 
 router = APIRouter(
@@ -69,6 +71,71 @@ def create_access_token(user_id: int):
     )
 
 
+def _user_dict(user: User) -> dict:
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "is_active": user.is_active,
+    }
+
+
+# ============================================================
+# REGISTER  (public - customers only; agents/admins are created
+# by an administrator, see app/api/users.py)
+# ============================================================
+
+class RegisterRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    email: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=6, max_length=128)
+
+
+@router.post("/register")
+def register(
+    payload: RegisterRequest,
+    db: Session = Depends(get_db)
+):
+    existing = db.query(User).filter(
+        User.email == payload.email
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered"
+        )
+
+    user = User(
+        name=payload.name,
+        email=payload.email,
+        password_hash=password_hash.hash(payload.password),
+        role=UserRole.CUSTOMER
+    )
+
+    db.add(user)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered"
+        )
+
+    db.refresh(user)
+
+    access_token = create_access_token(user.id)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": _user_dict(user)
+    }
+
+
 # ============================================================
 # LOGIN
 # ============================================================
@@ -109,7 +176,8 @@ def login(
 
     return {
         "access_token": access_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "user": _user_dict(user)
     }
 
 

@@ -1,38 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/ticket_bloc.dart';
+import '../bloc/ticket_event.dart';
 import '../bloc/ticket_state.dart';
 import '../data/ticket_model.dart';
+import '../data/ticket_repository.dart';
 
-class TicketTimelineEvent {
-  final String id;
-  final String title;
-  final String description;
-  final DateTime timestamp;
-
-  TicketTimelineEvent({
-    required this.id,
-    required this.title,
-    required this.description,
-    required this.timestamp,
-  });
-}
-
-class TicketComment {
-  final String id;
-  final String authorName;
-  final String authorRole; // 'customer' or 'agent'
-  final String message;
-  final DateTime timestamp;
-
-  TicketComment({
-    required this.id,
-    required this.authorName,
-    required this.authorRole,
-    required this.message,
-    required this.timestamp,
-  });
-}
+// TicketComment / TicketTimelineEvent live in ticket_model.dart - this file
+// used to redeclare them, which produced two distinct types with the same
+// name and made the repository's results unassignable here.
 
 class TicketListScreen extends StatefulWidget {
   final Function(int tabIndex)? onNavigateTab;
@@ -62,9 +38,10 @@ class _TicketListScreenState extends State<TicketListScreen> {
     'Closed',
   ];
 
-  // In-memory conversation & timeline stores for interactive demo
+  // Replies fetched from the API, keyed by ticket id.
   final Map<String, List<TicketComment>> _commentsMap = {};
-  final Map<String, List<TicketTimelineEvent>> _timelineMap = {};
+  bool _loadingComments = false;
+  bool _sendingComment = false;
 
   @override
   void initState() {
@@ -76,6 +53,43 @@ class _TicketListScreenState extends State<TicketListScreen> {
     });
   }
 
+  /// Open a ticket and pull its real conversation from the backend - this is
+  /// also how a customer sees replies an agent posted from the web dashboard.
+  Future<void> _openTicket(TicketModel ticket) async {
+    setState(() {
+      _activeTicket = ticket;
+      _loadingComments = true;
+    });
+    await _loadComments(ticket.id);
+  }
+
+  Future<void> _loadComments(String ticketId) async {
+    try {
+      final comments = await context.read<TicketRepository>().fetchComments(
+        ticketId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _commentsMap[ticketId] = comments;
+        _loadingComments = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingComments = false);
+      _showError(e);
+    }
+  }
+
+  void _showError(Object e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(e.toString().replaceAll('Exception: ', '')),
+        backgroundColor: const Color(0xFFDC2626),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -84,74 +98,69 @@ class _TicketListScreenState extends State<TicketListScreen> {
     super.dispose();
   }
 
+  /// Built only from what the ticket actually records - creation, whether an
+  /// agent is really assigned, and the current status. Nothing is invented.
   List<TicketTimelineEvent> _getTimelineForTicket(TicketModel ticket) {
-    return _timelineMap.putIfAbsent(ticket.id, () {
-      return [
+    final events = <TicketTimelineEvent>[
+      TicketTimelineEvent(
+        id: 'created',
+        title: 'Ticket Created',
+        description:
+            'Logged from the app · ${ticket.category} · ${ticket.priority} priority.',
+        timestamp: ticket.createdAt,
+      ),
+    ];
+
+    if (ticket.assignedAgentId != null) {
+      events.add(
         TicketTimelineEvent(
-          id: '1',
-          title: 'Ticket Created',
-          description:
-              'Ticket logged by customer with priority ${ticket.priority}.',
-          timestamp: ticket.createdAt,
+          id: 'assigned',
+          title: 'Assigned to Support',
+          description: 'A support agent is handling this ticket.',
+          timestamp: ticket.updatedAt,
         ),
+      );
+    }
+
+    if (ticket.status != 'Open') {
+      events.add(
         TicketTimelineEvent(
-          id: '2',
-          title: 'Agent Assigned',
-          description: 'Assigned to Support Specialist Marcus Vance.',
-          timestamp: ticket.createdAt.add(const Duration(minutes: 6)),
+          id: 'status',
+          title: ticket.status,
+          description: 'Current status, last updated by the support team.',
+          timestamp: ticket.updatedAt,
         ),
-        if (ticket.status != 'Open')
-          TicketTimelineEvent(
-            id: '3',
-            title: 'Under Investigation',
-            description:
-                'Agent initiated diagnostics and verified workspace logs.',
-            timestamp: ticket.createdAt.add(const Duration(minutes: 24)),
-          ),
-        if (ticket.status == 'Resolved' || ticket.status == 'Closed')
-          TicketTimelineEvent(
-            id: '4',
-            title: 'Issue Resolved',
-            description:
-                'Fix deployed and verified across synchronization services.',
-            timestamp: ticket.updatedAt,
-          ),
-      ];
-    });
+      );
+    }
+
+    return events;
   }
 
   List<TicketComment> _getCommentsForTicket(TicketModel ticket) {
-    return _commentsMap.putIfAbsent(ticket.id, () {
-      return [
-        TicketComment(
-          id: 'c1',
-          authorName: 'Marcus Vance',
-          authorRole: 'agent',
-          message:
-              'Hello! I have reviewed your submission regarding "${ticket.subject}". I am verifying the backend sync queue now.',
-          timestamp: ticket.createdAt.add(const Duration(minutes: 10)),
-        ),
-      ];
-    });
+    return _commentsMap[ticket.id] ?? const [];
   }
 
-  void _sendComment() {
+  Future<void> _sendComment() async {
     final text = _replyController.text.trim();
-    if (text.isEmpty || _activeTicket == null) return;
+    final ticket = _activeTicket;
+    if (text.isEmpty || ticket == null || _sendingComment) return;
 
-    final comments = _getCommentsForTicket(_activeTicket!);
-    setState(() {
-      comments.add(
-        TicketComment(
-          id: 'c-${DateTime.now().millisecondsSinceEpoch}',
-          authorName: 'You',
-          authorRole: 'customer',
-          message: text,
-          timestamp: DateTime.now(),
-        ),
+    setState(() => _sendingComment = true);
+    try {
+      await context.read<TicketRepository>().addComment(
+        ticketId: ticket.id,
+        commentText: text,
+        authorName: 'You',
       );
       _replyController.clear();
-    });
+      await _loadComments(ticket.id);
+      // A reply can reopen a resolved ticket server-side, so refresh the list.
+      if (mounted) context.read<TicketBloc>().add(LoadTicketsEvent());
+    } catch (e) {
+      if (mounted) _showError(e);
+    } finally {
+      if (mounted) setState(() => _sendingComment = false);
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -404,7 +413,7 @@ class _TicketListScreenState extends State<TicketListScreen> {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8.0),
                       child: InkWell(
-                        onTap: () => setState(() => _activeTicket = ticket),
+                        onTap: () => _openTicket(ticket),
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           padding: const EdgeInsets.all(12),
@@ -612,7 +621,7 @@ class _TicketListScreenState extends State<TicketListScreen> {
                             Expanded(
                               child: _buildMetaItem(
                                 'Assigned Agent',
-                                'Marcus Vance',
+                                ticket.assignedAgentName,
                               ),
                             ),
                             Expanded(
@@ -777,7 +786,18 @@ class _TicketListScreenState extends State<TicketListScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  if (comments.isEmpty)
+                  if (_loadingComments)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Center(
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    )
+                  else if (comments.isEmpty)
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(14),
@@ -787,7 +807,7 @@ class _TicketListScreenState extends State<TicketListScreen> {
                         border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
                       child: const Text(
-                        'No replies yet. Marcus Vance is reviewing your request.',
+                        'No replies yet. Our support team will respond here.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 11,
