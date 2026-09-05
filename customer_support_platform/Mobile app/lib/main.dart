@@ -8,6 +8,7 @@ import 'features/auth/bloc/auth_event.dart';
 import 'features/auth/bloc/auth_state.dart';
 import 'features/auth/data/auth_repository.dart';
 import 'features/auth/presentation/login_screen.dart';
+import 'features/chat/data/chat_repository.dart';
 import 'features/dashboard/presentation/main_navigation_screen.dart';
 import 'features/tickets/bloc/ticket_bloc.dart';
 import 'features/tickets/bloc/ticket_event.dart';
@@ -19,21 +20,30 @@ void main() {
   final tokenStorage = TokenStorage();
   final apiClient = ApiClient(tokenStorage: tokenStorage);
 
+  // Flip to `true` to demo the UI with canned data and no backend running.
+  const useMockData = false;
+
   final authRepository = AuthRepository(
     apiClient: apiClient,
     tokenStorage: tokenStorage,
-    useMock: true,
+    useMock: useMockData,
   );
 
   final ticketRepository = TicketRepository(
     apiClient: apiClient,
-    useMock: true,
+    useMock: useMockData,
+  );
+
+  final chatRepository = ChatRepository(
+    apiClient: apiClient,
+    useMock: useMockData,
   );
 
   runApp(
     CustomerSupportApp(
       authRepository: authRepository,
       ticketRepository: ticketRepository,
+      chatRepository: chatRepository,
     ),
   );
 }
@@ -41,11 +51,13 @@ void main() {
 class CustomerSupportApp extends StatelessWidget {
   final AuthRepository authRepository;
   final TicketRepository ticketRepository;
+  final ChatRepository chatRepository;
 
   const CustomerSupportApp({
     super.key,
     required this.authRepository,
     required this.ticketRepository,
+    required this.chatRepository,
   });
 
   @override
@@ -54,6 +66,7 @@ class CustomerSupportApp extends StatelessWidget {
       providers: [
         RepositoryProvider<AuthRepository>.value(value: authRepository),
         RepositoryProvider<TicketRepository>.value(value: ticketRepository),
+        RepositoryProvider<ChatRepository>.value(value: chatRepository),
       ],
       child: MultiBlocProvider(
         providers: [

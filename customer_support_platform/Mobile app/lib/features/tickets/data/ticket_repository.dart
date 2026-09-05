@@ -107,11 +107,15 @@ class TicketRepository {
     }
 
     try {
-      final response = await apiClient.dio.get('/tickets');
-      final List data = response.data['tickets'] ?? [];
-      return data.map((json) => TicketModel.fromJson(json)).toList();
+      // /tickets is agent+admin only; customers read their own queue here.
+      final response = await apiClient.dio.get('/tickets/my');
+      final data = response.data;
+      final List raw = data is List ? data : (data['tickets'] ?? []);
+      return raw
+          .map((json) => TicketModel.fromJson(Map<String, dynamic>.from(json)))
+          .toList();
     } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Failed to load tickets');
+      throw Exception(_errorMessage(e, 'Failed to load tickets'));
     }
   }
 
@@ -150,17 +154,21 @@ class TicketRepository {
 
     try {
       final response = await apiClient.dio.post(
-        '/tickets',
+        '/tickets/',
         data: {
           'subject': subject,
           'category': category,
-          'priority': priority,
+          // The API takes the lowercase enum value ("high"), not the label.
+          'priority': TicketModel.priorityToApi(priority),
           'description': description,
         },
       );
-      return TicketModel.fromJson(response.data['ticket']);
+      final body = Map<String, dynamic>.from(response.data as Map);
+      return TicketModel.fromJson(
+        Map<String, dynamic>.from(body['ticket'] ?? body),
+      );
     } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Failed to create ticket');
+      throw Exception(_errorMessage(e, 'Failed to create ticket'));
     }
   }
 
@@ -169,15 +177,76 @@ class TicketRepository {
     required String commentText,
     required String authorName,
   }) async {
-    final ticket = _mockTickets.firstWhere((t) => t.id == ticketId);
-    final newComment = TicketComment(
-      id: 'c_${DateTime.now().millisecondsSinceEpoch}',
-      authorName: authorName,
-      authorRole: 'customer',
-      message: commentText,
-      timestamp: DateTime.now(),
-    );
-    ticket.comments.add(newComment);
-    return ticket;
+    if (useMock) {
+      final ticket = _mockTickets.firstWhere((t) => t.id == ticketId);
+      ticket.comments.add(
+        TicketComment(
+          id: 'c_${DateTime.now().millisecondsSinceEpoch}',
+          authorName: authorName,
+          authorRole: 'customer',
+          message: commentText,
+          timestamp: DateTime.now(),
+        ),
+      );
+      return ticket;
+    }
+
+    try {
+      await apiClient.dio.post(
+        '/tickets/$ticketId/messages',
+        data: {'content': commentText},
+      );
+      final refreshed = await apiClient.dio.get('/tickets/$ticketId');
+      return TicketModel.fromJson(
+        Map<String, dynamic>.from(refreshed.data as Map),
+      );
+    } on DioException catch (e) {
+      throw Exception(_errorMessage(e, 'Failed to post your reply'));
+    }
+  }
+
+  /// Messages on a ticket, oldest first. Internal agent notes are filtered
+  /// out by the backend for customers.
+  Future<List<TicketComment>> fetchComments(String ticketId) async {
+    if (useMock) {
+      return _mockTickets.firstWhere((t) => t.id == ticketId).comments;
+    }
+
+    try {
+      final response = await apiClient.dio.get('/tickets/$ticketId/messages');
+      final List raw = response.data is List ? response.data : [];
+      return raw.map((json) {
+        final m = Map<String, dynamic>.from(json);
+        final senderType = (m['sender_type'] ?? 'agent').toString();
+        return TicketComment(
+          id: m['id']?.toString() ?? '',
+          authorName: senderType == 'customer' ? 'You' : 'Support Team',
+          authorRole: senderType,
+          message: m['content'] ?? '',
+          timestamp: m['created_at'] != null
+              ? DateTime.parse(m['created_at'])
+              : DateTime.now(),
+        );
+      }).toList();
+    } on DioException catch (e) {
+      throw Exception(_errorMessage(e, 'Failed to load ticket replies'));
+    }
+  }
+
+  String _errorMessage(DioException e, String fallback) {
+    final data = e.response?.data;
+    if (data is Map) {
+      final detail = data['detail'] ?? data['message'];
+      if (detail is String && detail.isNotEmpty) return detail;
+      if (detail is List && detail.isNotEmpty) {
+        final first = detail.first;
+        if (first is Map && first['msg'] is String) return first['msg'];
+      }
+    }
+    if (e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout) {
+      return 'Cannot reach the support server. Is the backend running?';
+    }
+    return fallback;
   }
 }

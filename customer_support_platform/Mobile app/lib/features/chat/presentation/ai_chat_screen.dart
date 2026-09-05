@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../auth/data/user_model.dart';
 import '../data/chat_model.dart';
 import '../data/chat_repository.dart';
@@ -22,14 +23,13 @@ class AIChatScreen extends StatefulWidget {
 }
 
 class _AIChatScreenState extends State<AIChatScreen> {
-  final ChatRepository _repository = ChatRepository(useMock: true);
+  late final ChatRepository _repository;
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
   List<ChatMessage> _messages = [];
   bool _isLoading = false;
   String _status = 'active'; // 'active' or 'agent_takeover'
-  final String _assignedAgent = 'Hammad Don';
 
   final List<String> _quickPrompts = [
     'How can I reset my password?',
@@ -41,6 +41,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
   @override
   void initState() {
     super.initState();
+    _repository = context.read<ChatRepository>();
     _messages = _repository.getInitialMessages(widget.user?.name ?? 'Customer');
   }
 
@@ -83,23 +84,49 @@ class _AIChatScreenState extends State<AIChatScreen> {
     });
     _scrollToBottom();
 
-    final botReply = await _repository.sendUserMessage(text);
-
-    setState(() {
-      _messages.add(botReply);
-      _isLoading = false;
-    });
+    try {
+      final botReply = await _repository.sendUserMessage(text);
+      if (!mounted) return;
+      setState(() {
+        _messages.add(botReply);
+        _isLoading = false;
+        if (_repository.handedToHuman) _status = 'agent_takeover';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
     _scrollToBottom();
   }
 
   Future<void> _handleEscalateToHuman() async {
     setState(() => _isLoading = true);
-    final agentMsg = await _repository.triggerAgentTakeover();
-    setState(() {
-      _status = 'agent_takeover';
-      _messages.add(agentMsg);
-      _isLoading = false;
-    });
+    try {
+      final reply = await _repository.requestHumanHandoff();
+      if (!mounted) return;
+      setState(() {
+        _messages.add(reply);
+        _isLoading = false;
+        if (_repository.handedToHuman) _status = 'agent_takeover';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
     _scrollToBottom();
   }
 
@@ -119,13 +146,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
             color: Color(0xFF0F172A),
             size: 28,
           ),
-          onPressed: () {
-            if (widget.onBack != null) {
-              widget.onBack!();
-            } else {
-              Navigator.maybePop(context);
-            }
-          },
+          onPressed: widget.onBack,
         ),
         titleSpacing: 0,
         title: Row(
@@ -205,7 +226,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
                 ),
                 Text(
                   _status == 'agent_takeover'
-                      ? 'Care of $_assignedAgent'
+                      ? 'Handled by our support team'
                       : 'RAG Grounded in KB',
                   style: const TextStyle(
                     fontSize: 10,
@@ -267,7 +288,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    'Human Agent $_assignedAgent has taken over.',
+                    'Handed to our support team — an agent will reply here.',
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -516,7 +537,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
                   const SizedBox(width: 8),
                   Text(
                     _status == 'agent_takeover'
-                        ? 'Hammad is typing...'
+                        ? 'Sending to the support team...'
                         : 'Searching KB & Generating...',
                     style: const TextStyle(
                       fontSize: 11,

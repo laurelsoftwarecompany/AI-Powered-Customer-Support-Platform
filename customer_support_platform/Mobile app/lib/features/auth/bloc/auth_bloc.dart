@@ -18,9 +18,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     try {
-      final isLoggedIn = await authRepository.isAuthenticated();
-      if (isLoggedIn) {
-        emit(const Authenticated());
+      // Restore the full profile, not just "there is a token" - otherwise the
+      // app comes back with an empty user after a relaunch.
+      final user = await authRepository.getCurrentUser();
+      if (user != null) {
+        emit(Authenticated(user: user));
       } else {
         emit(Unauthenticated());
       }

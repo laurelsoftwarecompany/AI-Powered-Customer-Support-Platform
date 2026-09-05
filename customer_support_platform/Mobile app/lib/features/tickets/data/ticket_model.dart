@@ -50,7 +50,7 @@ class TicketModel {
     required this.category,
     required this.priority,
     required this.status,
-    this.assignedAgentName = 'Marcus Vance',
+    this.assignedAgentName = 'Unassigned',
     required this.createdAt,
     required this.updatedAt,
     List<TicketTimelineEvent>? timeline,
@@ -58,16 +58,62 @@ class TicketModel {
   }) : timeline = timeline ?? [],
        comments = comments ?? [];
 
+  /// The API stores status/priority as lowercase enum values
+  /// (`in_progress`, `high`); the UI shows and switches on display labels.
+  static const Map<String, String> _statusLabels = {
+    'open': 'Open',
+    'in_progress': 'In Progress',
+    'waiting_for_customer': 'Waiting for Customer',
+    'resolved': 'Resolved',
+    'closed': 'Closed',
+  };
+
+  static const Map<String, String> _priorityLabels = {
+    'low': 'Low',
+    'medium': 'Medium',
+    'high': 'High',
+    'urgent': 'Urgent',
+  };
+
+  static String statusToApi(String label) => _statusLabels.entries
+      .firstWhere(
+        (e) => e.value.toLowerCase() == label.toLowerCase(),
+        orElse: () => const MapEntry('open', 'Open'),
+      )
+      .key;
+
+  static String priorityToApi(String label) => _priorityLabels.entries
+      .firstWhere(
+        (e) => e.value.toLowerCase() == label.toLowerCase(),
+        orElse: () => const MapEntry('medium', 'Medium'),
+      )
+      .key;
+
+  /// Display reference the customer can quote, derived from the id the same
+  /// way the agent web dashboard derives it (TICK-0007).
+  static String numberFor(Object? id) {
+    final parsed = int.tryParse('$id');
+    if (parsed == null) return 'TICK-0000';
+    return 'TICK-${parsed.toString().padLeft(4, '0')}';
+  }
+
   factory TicketModel.fromJson(Map<String, dynamic> json) {
+    final rawStatus = (json['status'] ?? 'open').toString().toLowerCase();
+    final rawPriority = (json['priority'] ?? 'medium').toString().toLowerCase();
+    final agentId = json['assigned_agent_id'];
+
     return TicketModel(
       id: json['id']?.toString() ?? '',
-      ticketNumber: json['ticket_number'] ?? 'TICK-000',
+      ticketNumber: json['ticket_number'] ?? numberFor(json['id']),
       subject: json['subject'] ?? '',
       description: json['description'] ?? '',
       category: json['category'] ?? 'General',
-      priority: json['priority'] ?? 'Medium',
-      status: json['status'] ?? 'Open',
-      assignedAgentName: json['assigned_agent_name'] ?? 'Marcus Vance',
+      priority: _priorityLabels[rawPriority] ?? 'Medium',
+      status: _statusLabels[rawStatus] ?? 'Open',
+      // Ticket payloads carry the agent's id, not their name, and the user
+      // directory is staff-only - so show assignment state, not a fake name.
+      assignedAgentName: json['assigned_agent_name'] ??
+          (agentId == null ? 'Unassigned' : 'Support Team'),
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
@@ -82,8 +128,8 @@ class TicketModel {
       'subject': subject,
       'description': description,
       'category': category,
-      'priority': priority,
-      'status': status,
+      'priority': priorityToApi(priority),
+      'status': statusToApi(status),
     };
   }
 }
