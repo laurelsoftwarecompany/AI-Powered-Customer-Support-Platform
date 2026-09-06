@@ -98,7 +98,7 @@ class CustomerSupportApp extends StatelessWidget {
           ),
         ],
         child: MaterialApp(
-          title: 'Customer Support',
+          title: 'Laurel Desk',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
             colorScheme: ColorScheme.fromSeed(

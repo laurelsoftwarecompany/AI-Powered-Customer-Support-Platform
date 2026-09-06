@@ -156,83 +156,93 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             ),
           ],
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         child: AnimatedBuilder(
           animation: _animController,
           builder: (context, child) {
             final progress = _animController.value;
 
             return Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 // 1. Animated Home Pill
-                _buildAnimatedNavPill(
-                  isSelected: _currentIndex == 0,
-                  label: 'Home',
-                  primaryColor: primaryPurple,
-                  iconWidget: CustomPaint(
-                    size: const Size(20, 20),
-                    painter: _PookieHomePainter(
-                      progress: progress,
-                      isSelected: _currentIndex == 0,
+                Expanded(
+                  child: _buildAnimatedNavPill(
+                    isSelected: _currentIndex == 0,
+                    label: 'Home',
+                    primaryColor: primaryPurple,
+                    iconWidget: CustomPaint(
+                      size: const Size(20, 20),
+                      painter: _PookieHomePainter(
+                        progress: progress,
+                        isSelected: _currentIndex == 0,
+                      ),
                     ),
+                    onTap: () => setState(() {
+                      _isLiveAgentMode = false;
+                      _currentIndex = 0;
+                    }),
                   ),
-                  onTap: () => setState(() {
-                    _isLiveAgentMode = false;
-                    _currentIndex = 0;
-                  }),
                 ),
+                const SizedBox(width: 8),
 
                 // 2. Animated Tickets Pill
-                _buildAnimatedNavPill(
-                  isSelected: _currentIndex == 3,
-                  label: 'Tickets',
-                  primaryColor: primaryPurple,
-                  iconWidget: CustomPaint(
-                    size: const Size(20, 20),
-                    painter: _PookieTicketPainter(
-                      progress: progress,
-                      isSelected: _currentIndex == 3,
+                Expanded(
+                  child: _buildAnimatedNavPill(
+                    isSelected: _currentIndex == 3,
+                    label: 'Tickets',
+                    primaryColor: primaryPurple,
+                    iconWidget: CustomPaint(
+                      size: const Size(20, 20),
+                      painter: _PookieTicketPainter(
+                        progress: progress,
+                        isSelected: _currentIndex == 3,
+                      ),
                     ),
+                    onTap: () => setState(() {
+                      _isLiveAgentMode = false;
+                      _currentIndex = 3;
+                    }),
                   ),
-                  onTap: () => setState(() {
-                    _isLiveAgentMode = false;
-                    _currentIndex = 3;
-                  }),
                 ),
+                const SizedBox(width: 8),
 
                 // 3. Animated Ask AI Robot Pill
-                _buildAnimatedNavPill(
-                  isSelected: _currentIndex == 1 && !_isLiveAgentMode,
-                  label: 'Ask AI',
-                  primaryColor: primaryPurple,
-                  iconWidget: CustomPaint(
-                    size: const Size(20, 20),
-                    painter: _PookieRobotPainter(
-                      progress: progress,
-                      isSelected: _currentIndex == 1 && !_isLiveAgentMode,
+                Expanded(
+                  child: _buildAnimatedNavPill(
+                    isSelected: _currentIndex == 1 && !_isLiveAgentMode,
+                    label: 'Ask AI',
+                    primaryColor: primaryPurple,
+                    iconWidget: CustomPaint(
+                      size: const Size(22, 22),
+                      painter: _PookieRobotPainter(
+                        progress: progress,
+                        isSelected: _currentIndex == 1 && !_isLiveAgentMode,
+                      ),
                     ),
+                    onTap: () => setState(() {
+                      _isLiveAgentMode = false;
+                      _currentIndex = 1;
+                    }),
                   ),
-                  onTap: () => setState(() {
-                    _isLiveAgentMode = false;
-                    _currentIndex = 1;
-                  }),
                 ),
+                const SizedBox(width: 8),
 
                 // 4. Animated Live Agent Pill
-                _buildAnimatedNavPill(
-                  isSelected: _currentIndex == 1 && _isLiveAgentMode,
-                  label: 'Live Agent',
-                  primaryColor: primaryPurple,
-                  hasLiveBeacon: true,
-                  iconWidget: CustomPaint(
-                    size: const Size(20, 20),
-                    painter: _PookieAgentPainter(
-                      progress: progress,
-                      isSelected: _currentIndex == 1 && _isLiveAgentMode,
+                Expanded(
+                  child: _buildAnimatedNavPill(
+                    isSelected: _currentIndex == 1 && _isLiveAgentMode,
+                    label: 'Live Agent',
+                    primaryColor: primaryPurple,
+                    hasLiveBeacon: true,
+                    iconWidget: CustomPaint(
+                      size: const Size(20, 20),
+                      painter: _PookieAgentPainter(
+                        progress: progress,
+                        isSelected: _currentIndex == 1 && _isLiveAgentMode,
+                      ),
                     ),
+                    onTap: () => _showLiveAgentSelector(context),
                   ),
-                  onTap: () => _showLiveAgentSelector(context),
                 ),
               ],
             );
@@ -252,18 +262,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     bool hasLiveBeacon = false,
   }) {
     final bounce = isSelected
-        ? math.sin(_animController.value * 2 * math.pi) * 2.2
+        ? math.sin(_animController.value * 2 * math.pi) * 1.5
         : 0.0;
 
     return Transform.translate(
       offset: Offset(0, -bounce),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          height: 46,
           decoration: BoxDecoration(
             gradient: isSelected
                 ? const LinearGradient(
@@ -272,11 +282,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                     end: Alignment.bottomRight,
                   )
                 : null,
-            color: isSelected ? null : const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(22),
+            color: isSelected ? null : Colors.white,
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: isSelected
-                  ? const Color(0xFF818CF8)
+                  ? const Color(0xFF6366F1)
                   : const Color(0xFFE2E8F0),
               width: 1.2,
             ),
@@ -291,13 +301,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 : null,
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.max,
             children: [
-              if (hasLiveBeacon && !isSelected) ...[
+              if (hasLiveBeacon) ...[
                 Container(
-                  width: 6,
-                  height: 6,
-                  margin: const EdgeInsets.only(right: 5),
+                  width: 5,
+                  height: 5,
+                  margin: const EdgeInsets.only(right: 6),
                   decoration: const BoxDecoration(
                     color: Color(0xFF10B981),
                     shape: BoxShape.circle,
@@ -305,14 +316,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 ),
               ],
               iconWidget,
-              const SizedBox(width: 5),
+              const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected ? Colors.white : const Color(0xFF475569),
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                  letterSpacing: 0.1,
+                  color: isSelected ? Colors.white : const Color(0xFF334155),
+                  fontSize: 11.5,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  letterSpacing: -0.1,
                 ),
               ),
             ],
@@ -336,60 +347,42 @@ class _PookieHomePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     final cy = size.height / 2;
-    final mainColor = isSelected ? Colors.white : const Color(0xFF475569);
+    final strokeColor = isSelected ? Colors.white : const Color(0xFF334155);
 
     final linePaint = Paint()
-      ..color = mainColor
+      ..color = strokeColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
+      ..strokeWidth = 1.8
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-
-    final fillPaint = Paint()
-      ..color = isSelected
-          ? Colors.white.withValues(alpha: 0.25)
-          : const Color(0xFFEEF2FF)
-      ..style = PaintingStyle.fill;
-
-    final chimneyFloat = math.sin(progress * 2 * math.pi) * 1.5;
 
     // Roof Path
     final roof = Path()
       ..moveTo(cx - 8, cy + 1)
-      ..lineTo(cx, cy - 7)
+      ..lineTo(cx, cy - 6.5)
       ..lineTo(cx + 8, cy + 1);
     canvas.drawPath(roof, linePaint);
 
     // Chimney
     canvas.drawLine(
-      Offset(cx + 5, cy - 3),
-      Offset(cx + 5, cy - 7),
-      linePaint..strokeWidth = 1.6,
-    );
-
-    // Animated Cozy Smoke Dot
-    canvas.drawCircle(
-      Offset(cx + 5, cy - 8.5 + chimneyFloat),
-      1.1,
-      Paint()
-        ..color = isSelected ? const Color(0xFFFDE047) : const Color(0xFF818CF8)
-        ..style = PaintingStyle.fill,
+      Offset(cx + 4.5, cy - 2.8),
+      Offset(cx + 4.5, cy - 6),
+      linePaint..strokeWidth = 1.5,
     );
 
     // House Base
     final baseRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(cx - 6, cy, 12, 8),
-      const Radius.circular(2.5),
+      Rect.fromLTWH(cx - 6, cy + 0.5, 12, 7.5),
+      const Radius.circular(2),
     );
-    canvas.drawRRect(baseRect, fillPaint);
-    canvas.drawRRect(baseRect, linePaint..strokeWidth = 1.8);
+    canvas.drawRRect(baseRect, linePaint..strokeWidth = 1.7);
 
-    // Warm Doorway
+    // Doorway
     final doorRect = Rect.fromLTWH(cx - 2, cy + 3.5, 4, 4.5);
     canvas.drawRect(
       doorRect,
       Paint()
-        ..color = isSelected ? Colors.white : const Color(0xFF4F46E5)
+        ..color = isSelected ? Colors.white : const Color(0xFF334155)
         ..style = PaintingStyle.fill,
     );
   }
@@ -402,7 +395,7 @@ class _PookieHomePainter extends CustomPainter {
 }
 
 // ==========================================
-// 🎟️ 2. TICKET PAINTER
+// 🎟️ 2. TICKET PAINTER (Capsule Split Token)
 // ==========================================
 class _PookieTicketPainter extends CustomPainter {
   final double progress;
@@ -414,55 +407,27 @@ class _PookieTicketPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     final cy = size.height / 2;
-    final mainColor = isSelected ? Colors.white : const Color(0xFF475569);
+    final strokeColor = isSelected ? Colors.white : const Color(0xFF334155);
 
     final linePaint = Paint()
-      ..color = mainColor
+      ..color = strokeColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
+      ..strokeWidth = 1.6
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    final fillPaint = Paint()
-      ..color = isSelected
-          ? Colors.white.withValues(alpha: 0.22)
-          : const Color(0xFFEEF2FF)
-      ..style = PaintingStyle.fill;
+    // Capsule / Pill shape: width 19, height 10, radius 5
+    final capsule = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: Offset(cx, cy), width: 19, height: 10),
+      const Radius.circular(5),
+    );
+    canvas.drawRRect(capsule, linePaint);
 
-    // Ticket Outline with Notch Cuts
-    final ticket = Path()
-      ..moveTo(cx - 8, cy - 5.5)
-      ..lineTo(cx + 8, cy - 5.5)
-      ..arcToPoint(
-        Offset(cx + 8, cy + 5.5),
-        radius: const Radius.circular(2.5),
-        clockwise: true,
-      )
-      ..lineTo(cx - 8, cy + 5.5)
-      ..arcToPoint(
-        Offset(cx - 8, cy - 5.5),
-        radius: const Radius.circular(2.5),
-        clockwise: true,
-      );
-
-    canvas.drawPath(ticket, fillPaint);
-    canvas.drawPath(ticket, linePaint);
-
-    // Side cutouts
-    canvas.drawCircle(Offset(cx - 8, cy), 1.6, Paint()..color = Colors.white);
-    canvas.drawCircle(Offset(cx + 8, cy), 1.6, Paint()..color = Colors.white);
-
-    // Perforation / Star shimmer in center
-    final shimmer = (math.sin(progress * 2 * math.pi) + 1) / 2;
+    // Center vertical dividing line
     canvas.drawLine(
-      Offset(cx, cy - 3.5),
-      Offset(cx, cy + 3.5),
-      Paint()
-        ..color = isSelected
-            ? Colors.white.withValues(alpha: 0.6 + (shimmer * 0.4))
-            : const Color(0xFF818CF8)
-        ..strokeWidth = 1.4
-        ..strokeCap = StrokeCap.round,
+      Offset(cx, cy - 4.5),
+      Offset(cx, cy + 4.5),
+      linePaint..strokeWidth = 1.4,
     );
   }
 
@@ -474,7 +439,7 @@ class _PookieTicketPainter extends CustomPainter {
 }
 
 // ==========================================
-// 🤖 3. POOKIE ROBOT PAINTER (AI BOT)
+// 🤖 3. POOKIE ROBOT PAINTER (AI BOT WITH SPARK STAR)
 // ==========================================
 class _PookieRobotPainter extends CustomPainter {
   final double progress;
@@ -485,25 +450,21 @@ class _PookieRobotPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
-    final cy = size.height / 2 + 1;
+    final cy = size.height / 2 + 1.2;
 
     final whitePaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.fill;
 
-    final blushPaint = Paint()
-      ..color = const Color(0xFFFDA4AF)
-      ..style = PaintingStyle.fill;
-
     final screenPaint = Paint()
-      ..color = const Color(0xFF1E1B4B)
+      ..color = const Color(0xFF0F172A)
       ..style = PaintingStyle.fill;
 
     final eyePaint = Paint()
       ..color = const Color(0xFF38BDF8)
       ..style = PaintingStyle.fill;
 
-    final antennaWiggle = math.sin(progress * 2 * math.pi) * 1.5;
+    final antennaWiggle = math.sin(progress * 2 * math.pi) * 1.0;
 
     // Antenna Stick
     canvas.drawLine(
@@ -515,19 +476,22 @@ class _PookieRobotPainter extends CustomPainter {
         ..strokeCap = StrokeCap.round,
     );
 
-    // Glowing Antenna Tip
-    canvas.drawCircle(
-      Offset(cx + antennaWiggle, cy - 10),
-      2.0,
+    // Glowing Antenna Sparkle / Star (Yellow)
+    _drawStar(
+      canvas,
+      Offset(cx + antennaWiggle, cy - 10.5),
+      4,
+      2.6,
+      1.3,
       Paint()
-        ..color = const Color(0xFFFDE047)
+        ..color = const Color(0xFFFACC15)
         ..style = PaintingStyle.fill,
     );
 
     // Head Body
     final headRect = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: Offset(cx, cy), width: 17, height: 13),
-      const Radius.circular(5),
+      Rect.fromCenter(center: Offset(cx, cy), width: 17, height: 12),
+      const Radius.circular(4),
     );
     canvas.drawRRect(headRect, whitePaint);
 
@@ -543,13 +507,13 @@ class _PookieRobotPainter extends CustomPainter {
 
     // Visor Screen
     final visorRect = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: Offset(cx, cy), width: 13, height: 9),
-      const Radius.circular(3.5),
+      Rect.fromCenter(center: Offset(cx, cy), width: 13, height: 8),
+      const Radius.circular(2.6),
     );
     canvas.drawRRect(visorRect, screenPaint);
 
     // Blinking Cyan Eyes
-    final isBlinking = (progress > 0.45 && progress < 0.55);
+    final isBlinking = (progress > 0.46 && progress < 0.54);
     final eyeHeight = isBlinking ? 0.6 : 2.2;
 
     canvas.drawRRect(
@@ -575,10 +539,31 @@ class _PookieRobotPainter extends CustomPainter {
       ),
       eyePaint,
     );
+  }
 
-    // Cheeks
-    canvas.drawCircle(Offset(cx - 4.5, cy + 2.5), 1.0, blushPaint);
-    canvas.drawCircle(Offset(cx + 4.5, cy + 2.5), 1.0, blushPaint);
+  void _drawStar(
+    Canvas canvas,
+    Offset center,
+    int points,
+    double outerRadius,
+    double innerRadius,
+    Paint paint,
+  ) {
+    final path = Path();
+    final step = math.pi / points;
+    for (int i = 0; i < 2 * points; i++) {
+      final r = (i % 2 == 0) ? outerRadius : innerRadius;
+      final angle = i * step - math.pi / 2;
+      final x = center.dx + r * math.cos(angle);
+      final y = center.dy + r * math.sin(angle);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, paint);
   }
 
   @override
@@ -601,29 +586,31 @@ class _PookieAgentPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     final cy = size.height / 2;
-    final mainColor = isSelected ? Colors.white : const Color(0xFF475569);
+    final strokeColor = isSelected ? Colors.white : const Color(0xFF334155);
 
     final linePaint = Paint()
-      ..color = mainColor
+      ..color = strokeColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
+      ..strokeWidth = 1.7
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    final fillPaint = Paint()
-      ..color = isSelected
-          ? Colors.white.withValues(alpha: 0.25)
-          : const Color(0xFFEEF2FF)
-      ..style = PaintingStyle.fill;
-
     // Specialist Head
-    canvas.drawCircle(Offset(cx, cy - 1), 4.2, fillPaint);
-    canvas.drawCircle(Offset(cx, cy - 1), 4.2, linePaint);
+    canvas.drawCircle(
+      Offset(cx, cy - 1.5),
+      3.8,
+      Paint()
+        ..color = isSelected
+            ? Colors.white.withValues(alpha: 0.25)
+            : const Color(0xFFEEF2FF)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(Offset(cx, cy - 1.5), 3.8, linePaint);
 
     // Headset Arc
     final headsetArc = Path()
       ..addArc(
-        Rect.fromCircle(center: Offset(cx, cy - 1), radius: 5.4),
+        Rect.fromCircle(center: Offset(cx, cy - 1.5), radius: 5.0),
         math.pi * 0.9,
         math.pi * 1.2,
       );
@@ -632,23 +619,22 @@ class _PookieAgentPainter extends CustomPainter {
       Paint()
         ..color = isSelected ? const Color(0xFFFDE047) : const Color(0xFF4F46E5)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.6,
+        ..strokeWidth = 1.5,
     );
 
-    // Headset Microphone Tip
-    final micPulse = math.sin(progress * 2 * math.pi) * 0.8;
+    // Headset mic / ear cup
     canvas.drawCircle(
-      Offset(cx + 4.5, cy + 2.5 + micPulse),
-      1.2,
+      Offset(cx + 4.2, cy + 1.5),
+      1.1,
       Paint()
-        ..color = const Color(0xFF10B981)
+        ..color = isSelected ? Colors.white : const Color(0xFF4F46E5)
         ..style = PaintingStyle.fill,
     );
 
     // Shoulders
     final shoulders = Path()
-      ..moveTo(cx - 6.5, cy + 8)
-      ..quadraticBezierTo(cx, cy + 4, cx + 6.5, cy + 8);
+      ..moveTo(cx - 6.5, cy + 7.5)
+      ..quadraticBezierTo(cx, cy + 3.5, cx + 6.5, cy + 7.5);
     canvas.drawPath(shoulders, linePaint);
   }
 

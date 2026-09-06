@@ -358,7 +358,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         ),
         const SizedBox(height: 12),
         const Text(
-          'Laurel Software',
+          'Laurel Desk',
           style: TextStyle(
             fontSize: 21,
             fontWeight: FontWeight.w800,

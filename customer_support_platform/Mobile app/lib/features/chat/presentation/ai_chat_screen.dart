@@ -1077,8 +1077,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
           // Quick Prompts row
           if (_messages.length <= 2)
             Container(
-              height: 36,
-              margin: const EdgeInsets.only(bottom: 6),
+              height: 38,
+              margin: const EdgeInsets.only(bottom: 8),
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1088,11 +1088,15 @@ class _AIChatScreenState extends State<AIChatScreen> {
                   return ActionChip(
                     label: Text(_quickPrompts[index]),
                     labelStyle: const TextStyle(
-                      fontSize: 10,
+                      fontSize: 10.5,
                       color: Color(0xFF334155),
+                      fontWeight: FontWeight.w500,
                     ),
                     backgroundColor: Colors.white,
-                    side: const BorderSide(color: Color(0xFFE2E8F0)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
                     onPressed: () => _handleSendMessage(_quickPrompts[index]),
                   );
                 },
@@ -1101,14 +1105,14 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
           // Message Input Bar
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             color: Colors.white,
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _textController,
-                    style: const TextStyle(fontSize: 12),
+                    style: const TextStyle(fontSize: 12.5),
                     decoration: InputDecoration(
                       hintText: _status == 'agent_takeover'
                           ? 'Reply to live support specialist...'
@@ -1122,29 +1126,31 @@ class _AIChatScreenState extends State<AIChatScreen> {
                       filled: true,
                       fillColor: const Color(0xFFF1F5F9),
                       contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+                        horizontal: 16,
+                        vertical: 10,
                       ),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(24),
                         borderSide: BorderSide.none,
                       ),
                     ),
                     onSubmitted: (_) => _handleSendMessage(),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 InkWell(
                   onTap: () => _handleSendMessage(),
+                  borderRadius: BorderRadius.circular(24),
                   child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
+                    width: 38,
+                    height: 38,
+                    decoration: const BoxDecoration(
                       color: primaryIndigo,
-                      borderRadius: BorderRadius.circular(12),
+                      shape: BoxShape.circle,
                     ),
                     child: const Icon(
                       Icons.send_rounded,
-                      size: 16,
+                      size: 18,
                       color: Colors.white,
                     ),
                   ),

@@ -1,6 +1,6 @@
 {
-    "name": "customer_support_app",
-    "short_name": "customer_support_app",
+    "name": "Laurel Desk",
+    "short_name": "Laurel Desk",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
