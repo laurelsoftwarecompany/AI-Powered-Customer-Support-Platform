@@ -37,6 +37,7 @@ export function useTickets() {
   return useQuery({
     queryKey: ["tickets"],
     queryFn: () => api.get<Ticket[]>("/tickets/"),
+    staleTime: 45_000,
   });
 }
 
@@ -45,6 +46,7 @@ export function useTicket(id: number) {
     queryKey: ["ticket", id],
     queryFn: () => api.get<Ticket>(`/tickets/${id}`),
     enabled: Number.isFinite(id),
+    staleTime: 30_000,
   });
 }
 
@@ -53,6 +55,7 @@ export function useTicketMessages(id: number) {
     queryKey: ["ticket", id, "messages"],
     queryFn: () => api.get<TicketMessage[]>(`/tickets/${id}/messages`),
     enabled: Number.isFinite(id),
+    staleTime: 20_000,
   });
 }
 
@@ -127,6 +130,7 @@ export function useConversations() {
   return useQuery({
     queryKey: ["conversations"],
     queryFn: () => api.get<Conversation[]>("/conversations/"),
+    staleTime: 45_000,
   });
 }
 
@@ -135,6 +139,7 @@ export function useConversation(id: number) {
     queryKey: ["conversation", id],
     queryFn: () => api.get<Conversation>(`/conversations/${id}`),
     enabled: Number.isFinite(id),
+    staleTime: 30_000,
   });
 }
 
@@ -143,6 +148,7 @@ export function useConversationMessages(id: number) {
     queryKey: ["conversation", id, "messages"],
     queryFn: () => api.get<Message[]>(`/conversations/${id}/messages`),
     enabled: Number.isFinite(id),
+    staleTime: 20_000,
   });
 }
 
@@ -189,6 +195,7 @@ export function useAdminStats() {
   return useQuery({
     queryKey: ["admin", "stats"],
     queryFn: () => api.get<AdminStats>("/admin/dashboard/stats"),
+    staleTime: 60_000,
   });
 }
 
@@ -196,6 +203,7 @@ export function useAiAnalytics() {
   return useQuery({
     queryKey: ["admin", "ai-analytics"],
     queryFn: () => api.get<AiAnalytics>("/admin/ai/analytics"),
+    staleTime: 60_000,
   });
 }
 
@@ -207,6 +215,7 @@ export function useAgentStats() {
         tickets: Record<string, number>;
         priority: Record<string, number>;
       }>("/agents/dashboard/stats"),
+    staleTime: 60_000,
   });
 }
 
@@ -214,6 +223,7 @@ export function useAgentWorkload() {
   return useQuery({
     queryKey: ["agents", "workload"],
     queryFn: () => api.get<AgentWorkloadRow[]>("/agents/workload"),
+    staleTime: 60_000,
   });
 }
 
@@ -222,6 +232,7 @@ export function useAdminUsers() {
   return useQuery({
     queryKey: ["admin", "users"],
     queryFn: () => api.get<User[]>("/admin/users"),
+    staleTime: 60_000,
   });
 }
 
@@ -268,6 +279,7 @@ export function useKnowledgeDocs() {
   return useQuery({
     queryKey: ["knowledge"],
     queryFn: () => api.get<KnowledgeDoc[]>("/knowledge/documents"),
+    staleTime: 60_000,
   });
 }
 

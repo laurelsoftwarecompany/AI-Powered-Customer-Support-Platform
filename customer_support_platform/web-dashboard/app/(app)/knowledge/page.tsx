@@ -32,6 +32,7 @@ import {
   Spinner,
   ErrorState,
   EmptyState,
+  TableSkeleton,
   cn,
 } from "@/components/ui";
 import { relativeTime, titleCase } from "@/lib/format";
@@ -199,7 +200,7 @@ export default function KnowledgePage() {
           }
         />
         {docs.isLoading ? (
-          <Spinner />
+          <TableSkeleton rows={5} />
         ) : docs.isError ? (
           <ErrorState message={(docs.error as Error).message} />
         ) : (docs.data ?? []).length === 0 ? (

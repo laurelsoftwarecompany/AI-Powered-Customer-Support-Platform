@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
+import dynamic from "next/dynamic";
 import { Ticket as TicketIcon, MessagesSquare, Users, Bot } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
@@ -11,8 +12,17 @@ import {
   useUserMap,
 } from "@/lib/queries";
 import { PageHeader } from "@/components/page-header";
-import { Panel, PanelHeader, Spinner, ErrorState, StatusBadge, PriorityBadge } from "@/components/ui";
-import { CountBars, Donut } from "@/components/count-bars";
+import {
+  Panel,
+  PanelHeader,
+  Spinner,
+  ErrorState,
+  StatusBadge,
+  PriorityBadge,
+  DashboardSkeleton,
+  ChartSkeleton,
+  DonutSkeleton,
+} from "@/components/ui";
 import {
   STATUS_LABEL,
   STATUS_ORDER,
@@ -21,6 +31,22 @@ import {
   relativeTime,
 } from "@/lib/format";
 import type { TicketStatus } from "@/lib/types";
+
+const CountBars = dynamic(
+  () => import("@/components/count-bars").then((mod) => mod.CountBars),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton />,
+  },
+);
+
+const Donut = dynamic(
+  () => import("@/components/count-bars").then((mod) => mod.Donut),
+  {
+    ssr: false,
+    loading: () => <DonutSkeleton />,
+  },
+);
 
 const STATUS_COLOR: Record<TicketStatus, string> = {
   open: "var(--st-open)",
@@ -92,8 +118,8 @@ export default function DashboardPage() {
   if (tickets.isLoading || conversations.isLoading) {
     return (
       <>
-        <PageHeader title="Dashboard" subtitle={`Welcome back, ${user?.name.split(" ")[0]}`} />
-        <Spinner />
+        <PageHeader title="Dashboard" subtitle={`Welcome back, ${user?.name.split(" ")[0] ?? ""}`} />
+        <DashboardSkeleton />
       </>
     );
   }

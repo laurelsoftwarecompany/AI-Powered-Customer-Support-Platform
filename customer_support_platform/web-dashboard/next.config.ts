@@ -1,9 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Emit .next/standalone so the Docker image can ship a minimal server
-  // instead of the whole node_modules tree.
-  output: "standalone",
+  // Use standalone output for Docker environments, standard for Vercel
+  output: process.env.VERCEL ? undefined : "standalone",
+  compress: true,
+  poweredByHeader: false,
+  experimental: {
+    optimizePackageImports: ["lucide-react", "@tanstack/react-query"],
+  },
 };
 
 export default nextConfig;

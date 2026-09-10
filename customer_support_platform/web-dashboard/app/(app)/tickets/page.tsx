@@ -15,6 +15,7 @@ import {
   StatusBadge,
   PriorityBadge,
   Avatar,
+  TableSkeleton,
 } from "@/components/ui";
 import {
   STATUS_LABEL,
@@ -144,7 +145,7 @@ export default function TicketsPage() {
 
       <Panel className="overflow-hidden">
         {isLoading ? (
-          <Spinner />
+          <TableSkeleton rows={7} />
         ) : isError ? (
           <ErrorState message={(error as Error).message} />
         ) : rows.length === 0 ? (

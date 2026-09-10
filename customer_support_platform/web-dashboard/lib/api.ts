@@ -1,5 +1,8 @@
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1";
+  process.env.NEXT_PUBLIC_API_BASE ??
+  (process.env.NODE_ENV === "production"
+    ? "https://customer-support-backend-ztc0.onrender.com/api/v1"
+    : "http://localhost:8000/api/v1");
 
 const TOKEN_KEY = "laurel.token";
 

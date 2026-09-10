@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import dynamic from "next/dynamic";
 import { Headphones } from "lucide-react";
 import { useAgentWorkload, useTickets, useDirectory } from "@/lib/queries";
 import { PageHeader } from "@/components/page-header";
@@ -10,8 +11,16 @@ import {
   ErrorState,
   EmptyState,
   Avatar,
+  ChartSkeleton,
 } from "@/components/ui";
-import { CountBars } from "@/components/count-bars";
+
+const CountBars = dynamic(
+  () => import("@/components/count-bars").then((m) => m.CountBars),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton />,
+  },
+);
 
 export default function AdminAgentsPage() {
   const workload = useAgentWorkload();

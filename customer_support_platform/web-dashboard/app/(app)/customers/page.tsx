@@ -14,6 +14,7 @@ import {
   ErrorState,
   EmptyState,
   Avatar,
+  TableSkeleton,
   cn,
 } from "@/components/ui";
 import { dateTime } from "@/lib/format";
@@ -82,7 +83,7 @@ export default function CustomersPage() {
 
       <Panel className="overflow-hidden">
         {customers.isLoading ? (
-          <Spinner />
+          <TableSkeleton rows={6} />
         ) : customers.isError ? (
           <ErrorState message={(customers.error as Error).message} />
         ) : rows.length === 0 ? (

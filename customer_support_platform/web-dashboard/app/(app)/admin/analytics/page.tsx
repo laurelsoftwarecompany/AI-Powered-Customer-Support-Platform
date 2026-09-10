@@ -1,11 +1,34 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Bot } from "lucide-react";
 import { useAiAnalytics } from "@/lib/queries";
 import { PageHeader } from "@/components/page-header";
-import { Panel, PanelHeader, Spinner, ErrorState } from "@/components/ui";
-import { CountBars, Donut } from "@/components/count-bars";
+import {
+  Panel,
+  PanelHeader,
+  Spinner,
+  ErrorState,
+  ChartSkeleton,
+  DonutSkeleton,
+} from "@/components/ui";
 import { titleCase, pct } from "@/lib/format";
+
+const CountBars = dynamic(
+  () => import("@/components/count-bars").then((m) => m.CountBars),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton />,
+  },
+);
+
+const Donut = dynamic(
+  () => import("@/components/count-bars").then((m) => m.Donut),
+  {
+    ssr: false,
+    loading: () => <DonutSkeleton />,
+  },
+);
 
 function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (

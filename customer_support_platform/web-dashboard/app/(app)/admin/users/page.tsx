@@ -14,6 +14,7 @@ import {
   ErrorState,
   EmptyState,
   Avatar,
+  TableSkeleton,
   cn,
 } from "@/components/ui";
 import { titleCase } from "@/lib/format";
@@ -93,7 +94,7 @@ export default function AdminUsersPage() {
 
       <Panel className="overflow-hidden">
         {users.isLoading ? (
-          <Spinner />
+          <TableSkeleton rows={6} />
         ) : users.isError ? (
           <ErrorState message={(users.error as Error).message} />
         ) : rows.length === 0 ? (

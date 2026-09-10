@@ -42,6 +42,7 @@ export interface TicketMessage {
   sender_type: SenderType;
   content: string;
   is_internal: boolean;
+  sources?: MessageSource[] | null;
   created_at: string;
 }
 

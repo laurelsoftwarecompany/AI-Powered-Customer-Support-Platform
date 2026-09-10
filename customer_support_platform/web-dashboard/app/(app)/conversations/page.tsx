@@ -11,6 +11,7 @@ import {
   ErrorState,
   EmptyState,
   Avatar,
+  TableSkeleton,
   cn,
 } from "@/components/ui";
 import { convNo, relativeTime } from "@/lib/format";
@@ -70,7 +71,7 @@ export default function ConversationsPage() {
 
       <Panel className="overflow-hidden">
         {isLoading ? (
-          <Spinner />
+          <TableSkeleton rows={6} />
         ) : isError ? (
           <ErrorState message={(error as Error).message} />
         ) : rows.length === 0 ? (

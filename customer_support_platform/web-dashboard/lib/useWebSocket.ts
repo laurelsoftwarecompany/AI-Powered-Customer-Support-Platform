@@ -1,16 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { getToken } from "./api";
+import { getToken, API_BASE } from "./api";
 
 /**
  * The base URL for WebSocket connections.
  * Derives from the API base URL by swapping the protocol scheme.
  */
 function getWsBase(): string {
-  const apiBase =
-    process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1";
-  return apiBase
+  return API_BASE
     .replace(/^https:/, "wss:")
     .replace(/^http:/, "ws:");
 }
