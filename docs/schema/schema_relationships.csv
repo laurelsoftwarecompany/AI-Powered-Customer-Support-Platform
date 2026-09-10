@@ -1,0 +1,10 @@
+﻿from_table,from_column,to_table,to_column,relationship,cardinality,enforced_by_database
+conversations,customer_id,users,id,conversations.customer_id -> users.id,many-to-one,yes
+conversations,ticket_id,tickets,id,conversations.ticket_id -> tickets.id,one-to-one,no
+knowledge_chunks,document_id,knowledge_documents,id,knowledge_chunks.document_id -> knowledge_documents.id,many-to-one,yes
+messages,conversation_id,conversations,id,messages.conversation_id -> conversations.id,many-to-one,yes
+ticket_messages,sender_id,users,id,ticket_messages.sender_id -> users.id,many-to-one,yes
+ticket_messages,ticket_id,tickets,id,ticket_messages.ticket_id -> tickets.id,many-to-one,yes
+tickets,assigned_agent_id,users,id,tickets.assigned_agent_id -> users.id,many-to-one,yes
+tickets,conversation_id,conversations,id,tickets.conversation_id -> conversations.id,one-to-one,no
+tickets,customer_id,users,id,tickets.customer_id -> users.id,many-to-one,yes

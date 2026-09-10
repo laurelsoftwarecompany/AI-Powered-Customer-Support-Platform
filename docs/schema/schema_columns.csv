@@ -1,0 +1,61 @@
+﻿table_name,column_name,ordinal_position,data_type,is_nullable,is_primary_key,is_foreign_key,references_table,references_column,is_indexed,is_unique,index_names,default_value,full_name,description
+conversations,id,1,INTEGER,no,yes,no,,,yes,no,ix_conversations_id,,conversations.id,
+conversations,customer_id,2,INTEGER,no,no,yes,users,id,yes,no,"ix_conversations_customer_id, ix_conversations_customer_updated",,conversations.customer_id,
+conversations,status,3,VARCHAR(50),no,no,no,,,no,no,,,conversations.status,'active' or 'human_support' (explicitly taken over).
+conversations,ai_active,4,BOOLEAN,no,no,no,,,no,no,,,conversations.ai_active,True = AI answers. Only an explicit takeover sets False.
+conversations,created_at,5,DATETIME,no,no,no,,,no,no,,,conversations.created_at,
+conversations,updated_at,6,DATETIME,no,no,no,,,yes,no,"ix_conversations_customer_updated, ix_conversations_updated",,conversations.updated_at,
+conversations,ticket_id,7,INTEGER,yes,no,logical (not enforced),tickets,id,no,no,,,conversations.ticket_id,NULL marks the customer's Ask AI thread.
+knowledge_chunks,id,1,INTEGER,no,yes,no,,,yes,no,ix_knowledge_chunks_id,,knowledge_chunks.id,
+knowledge_chunks,document_id,2,INTEGER,no,no,yes,knowledge_documents,id,yes,no,ix_knowledge_chunks_document_id,,knowledge_chunks.document_id,
+knowledge_chunks,chunk_index,3,INTEGER,no,no,no,,,no,no,,,knowledge_chunks.chunk_index,
+knowledge_chunks,content,4,TEXT,no,no,no,,,no,no,,,knowledge_chunks.content,
+knowledge_chunks,embedding,5,JSON,yes,no,no,,,no,no,,,knowledge_chunks.embedding,384-dim vector (BAAI/bge-small-en-v1.5) stored as JSON.
+knowledge_chunks,created_at,6,DATETIME,no,no,no,,,no,no,,,knowledge_chunks.created_at,
+knowledge_documents,id,1,INTEGER,no,yes,no,,,yes,no,ix_knowledge_documents_id,,knowledge_documents.id,
+knowledge_documents,title,2,VARCHAR(255),no,no,no,,,no,no,,,knowledge_documents.title,
+knowledge_documents,filename,3,VARCHAR(255),no,no,no,,,no,no,,,knowledge_documents.filename,
+knowledge_documents,file_type,4,VARCHAR(20),no,no,no,,,no,no,,,knowledge_documents.file_type,
+knowledge_documents,content,5,TEXT,no,no,no,,,no,no,,,knowledge_documents.content,
+knowledge_documents,status,6,VARCHAR(30),no,no,no,,,yes,no,ix_knowledge_documents_status,,knowledge_documents.status,
+knowledge_documents,created_at,7,DATETIME,no,no,no,,,no,no,,,knowledge_documents.created_at,
+knowledge_documents,updated_at,8,DATETIME,no,no,no,,,no,no,,,knowledge_documents.updated_at,
+messages,id,1,INTEGER,no,yes,no,,,yes,no,ix_messages_id,,messages.id,
+messages,conversation_id,2,INTEGER,no,no,yes,conversations,id,yes,no,"ix_messages_conversation_created, ix_messages_conversation_id",,messages.conversation_id,
+messages,sender_type,3,VARCHAR(30),no,no,no,,,no,no,,,messages.sender_type,customer | ai | agent | admin
+messages,content,4,TEXT,no,no,no,,,no,no,,,messages.content,
+messages,intent,5,VARCHAR(100),yes,no,no,,,no,no,,,messages.intent,AI intent classification for this turn.
+messages,confidence,6,FLOAT,yes,no,no,,,no,no,,,messages.confidence,"AI self-reported confidence, 0-1."
+messages,sources,7,JSON,yes,no,no,,,no,no,,,messages.sources,JSON array of knowledge-base citations behind the answer.
+messages,created_at,8,DATETIME,no,no,no,,,yes,no,ix_messages_conversation_created,,messages.created_at,
+messages,sender_name,9,VARCHAR(100),yes,no,no,,,no,no,,,messages.sender_name,
+ticket_messages,id,1,INTEGER,no,yes,no,,,yes,no,ix_ticket_messages_id,,ticket_messages.id,
+ticket_messages,ticket_id,2,INTEGER,no,no,yes,tickets,id,yes,no,"ix_ticket_messages_ticket_created, ix_ticket_messages_ticket_id",,ticket_messages.ticket_id,
+ticket_messages,sender_id,3,INTEGER,no,no,yes,users,id,yes,no,ix_ticket_messages_sender_id,,ticket_messages.sender_id,
+ticket_messages,sender_type,4,VARCHAR(30),no,no,no,,,no,no,,,ticket_messages.sender_type,
+ticket_messages,content,5,TEXT,no,no,no,,,no,no,,,ticket_messages.content,
+ticket_messages,is_internal,6,BOOLEAN,no,no,no,,,no,no,,,ticket_messages.is_internal,"True = agent-only note, hidden from the customer."
+ticket_messages,created_at,7,DATETIME,no,no,no,,,yes,no,ix_ticket_messages_ticket_created,,ticket_messages.created_at,
+ticket_messages,sources,8,JSON,yes,no,no,,,no,no,,,ticket_messages.sources,
+tickets,id,1,INTEGER,no,yes,no,,,yes,no,ix_tickets_id,,tickets.id,
+tickets,customer_id,2,INTEGER,no,no,yes,users,id,yes,no,"ix_tickets_customer_id, ix_tickets_customer_updated",,tickets.customer_id,
+tickets,assigned_agent_id,3,INTEGER,yes,no,yes,users,id,yes,no,ix_tickets_assigned_agent_id,,tickets.assigned_agent_id,
+tickets,subject,4,VARCHAR(255),no,no,no,,,no,no,,,tickets.subject,
+tickets,description,5,TEXT,no,no,no,,,no,no,,,tickets.description,
+tickets,category,6,VARCHAR(100),no,no,no,,,no,no,,,tickets.category,
+tickets,priority,7,VARCHAR(6),no,no,no,,,no,no,,,tickets.priority,
+tickets,status,8,VARCHAR(20),no,no,no,,,yes,no,ix_tickets_status_updated,,tickets.status,
+tickets,created_at,9,DATETIME,no,no,no,,,no,no,,,tickets.created_at,
+tickets,updated_at,10,DATETIME,no,no,no,,,yes,no,"ix_tickets_customer_updated, ix_tickets_status_updated",,tickets.updated_at,
+tickets,conversation_id,11,INTEGER,yes,no,logical (not enforced),conversations,id,no,no,,,tickets.conversation_id,
+users,id,1,INTEGER,no,yes,no,,,yes,no,ix_users_id,,users.id,
+users,name,2,VARCHAR(100),no,no,no,,,no,no,,,users.name,
+users,email,3,VARCHAR(255),no,no,no,,,yes,yes,ix_users_email,,users.email,
+users,password_hash,4,VARCHAR(255),no,no,no,,,no,no,,,users.password_hash,Argon2 hash. Never returned by the API.
+users,role,5,VARCHAR(8),no,no,no,,,no,no,,,users.role,customer | agent | admin
+users,is_active,6,BOOLEAN,no,no,no,,,no,no,,,users.is_active,
+users,created_at,7,DATETIME,no,no,no,,,no,no,,,users.created_at,
+users,updated_at,8,DATETIME,no,no,no,,,no,no,,,users.updated_at,
+users,phone,9,VARCHAR(50),yes,no,no,,,no,no,,,users.phone,
+users,location,10,VARCHAR(150),yes,no,no,,,no,no,,,users.location,
+users,organization,11,VARCHAR(150),yes,no,no,,,no,no,,,users.organization,

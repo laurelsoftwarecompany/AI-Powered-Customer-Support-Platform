@@ -8,6 +8,7 @@ import {
   useConversation,
   useConversationMessages,
   useTakeoverConversation,
+  useHandbackConversation,
   useSendConversationMessage,
   useUserMap,
 } from "@/lib/queries";

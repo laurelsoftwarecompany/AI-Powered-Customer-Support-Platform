@@ -1,20 +1,16 @@
 """
-Seed the database with demo data.
+Seed the database for production / initial startup.
 
     python -m app.seed          # seed only if the DB looks empty
     python -m app.seed --fresh  # wipe all rows first, then seed
 
-Demo accounts (all passwords shown):
-    admin@laurel.test / admin1234    (admin)
-    agent@laurel.test / agent1234    (agent)
-    nadia@laurel.test / agent1234    (agent)
-    sarah@example.com / customer1234 (customer)
-    james@example.com / customer1234 (customer)
-    maria@example.com / customer1234 (customer)
+Production accounts:
+    hammadmehmood464@gmail.com / Hammad@1234  (admin)
+    maoun.778899@gmail.com     / Aoun@1234    (agent)
 """
 
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from pwdlib import PasswordHash
 
@@ -26,8 +22,6 @@ from app.database.models import (
     Message,
     Ticket,
     TicketMessage,
-    TicketPriority,
-    TicketStatus,
     User,
     UserRole,
 )
@@ -107,164 +101,56 @@ def seed_knowledge(db) -> None:
     from app.services import knowledge_service
 
     for title, filename, ftype, content in KB_DOCS:
-        knowledge_service.create_document(
-            db,
-            title=title,
-            filename=filename,
-            file_type=ftype,
-            content=content,
+        existing = (
+            db.query(knowledge_service.KnowledgeDocument)
+            .filter_by(filename=filename)
+            .first()
         )
+        if not existing:
+            knowledge_service.create_document(
+                db,
+                title=title,
+                filename=filename,
+                file_type=ftype,
+                content=content,
+            )
 
 
 def seed(db) -> None:
-    # ---- users -------------------------------------------------
-    admin = User(name="Amir Rahman", email="admin@laurel.test",
-                 password_hash=_hash("admin1234"), role=UserRole.ADMIN)
-    agent = User(name="Omar Farid", email="agent@laurel.test",
-                 password_hash=_hash("agent1234"), role=UserRole.AGENT)
-    agent2 = User(name="Nadia Hassan", email="nadia@laurel.test",
-                  password_hash=_hash("agent1234"), role=UserRole.AGENT)
-    sarah = User(name="Sarah Chen", email="sarah@example.com",
-                 password_hash=_hash("customer1234"), role=UserRole.CUSTOMER)
-    james = User(name="James Miller", email="james@example.com",
-                 password_hash=_hash("customer1234"), role=UserRole.CUSTOMER)
-    maria = User(name="Maria Lopez", email="maria@example.com",
-                 password_hash=_hash("customer1234"), role=UserRole.CUSTOMER,
-                 is_active=False)
-
-    db.add_all([admin, agent, agent2, sarah, james, maria])
-    db.flush()
-
-    # ---- tickets ----------------------------------------------
-    tickets = [
-        Ticket(customer_id=sarah.id, assigned_agent_id=agent.id,
-               subject="Unable to access my account after password reset",
-               description="I reset my password but the login page keeps reloading and never lets me in.",
-               category="account_issue", priority=TicketPriority.HIGH,
-               status=TicketStatus.IN_PROGRESS,
-               created_at=NOW - timedelta(days=3), updated_at=NOW - timedelta(hours=5)),
-        Ticket(customer_id=james.id, assigned_agent_id=agent.id,
-               subject="Refund not received for cancelled order #4471",
-               description="I cancelled order 4471 eight days ago and still have not seen the refund.",
-               category="refund_request", priority=TicketPriority.URGENT,
-               status=TicketStatus.OPEN,
-               created_at=NOW - timedelta(days=1), updated_at=NOW - timedelta(hours=2)),
-        Ticket(customer_id=maria.id, assigned_agent_id=None,
-               subject="Payment fails at checkout with card ending 4242",
-               description="Every time I try to pay, I get 'payment could not be processed'.",
-               category="payment_issue", priority=TicketPriority.MEDIUM,
-               status=TicketStatus.OPEN,
-               created_at=NOW - timedelta(hours=20), updated_at=NOW - timedelta(hours=20)),
-        Ticket(customer_id=sarah.id, assigned_agent_id=agent2.id,
-               subject="How do I change the email on my account?",
-               description="I want to move my account to a new work email address.",
-               category="account_issue", priority=TicketPriority.LOW,
-               status=TicketStatus.WAITING_FOR_CUSTOMER,
-               created_at=NOW - timedelta(days=6), updated_at=NOW - timedelta(days=2)),
-        Ticket(customer_id=james.id, assigned_agent_id=agent2.id,
-               subject="App crashes when opening order history",
-               description="The mobile app closes instantly when I tap Order History.",
-               category="technical_support", priority=TicketPriority.HIGH,
-               status=TicketStatus.RESOLVED,
-               created_at=NOW - timedelta(days=9), updated_at=NOW - timedelta(days=4)),
-        Ticket(customer_id=maria.id, assigned_agent_id=None,
-               subject="Where is my order? Tracking hasn't updated in 5 days",
-               description="Tracking number shows 'label created' since last Tuesday.",
-               category="order_tracking", priority=TicketPriority.MEDIUM,
-               status=TicketStatus.CLOSED,
-               created_at=NOW - timedelta(days=14), updated_at=NOW - timedelta(days=10)),
-    ]
-    db.add_all(tickets)
-    db.flush()
-
-    db.add_all([
-        TicketMessage(ticket_id=tickets[0].id, sender_id=sarah.id, sender_type="customer",
-                      content=tickets[0].description, is_internal=False,
-                      created_at=tickets[0].created_at),
-        TicketMessage(ticket_id=tickets[0].id, sender_id=agent.id, sender_type="agent",
-                      content="Hi Sarah, I can see a stale session lock on the account. Clearing it now — please try again in 10 minutes.",
-                      is_internal=False, created_at=NOW - timedelta(hours=5)),
-        TicketMessage(ticket_id=tickets[0].id, sender_id=agent.id, sender_type="agent",
-                      content="Session cache cleared server-side. Escalate to platform team if it recurs.",
-                      is_internal=True, created_at=NOW - timedelta(hours=5)),
-        TicketMessage(ticket_id=tickets[1].id, sender_id=james.id, sender_type="customer",
-                      content=tickets[1].description, is_internal=False,
-                      created_at=tickets[1].created_at),
-    ])
-
-    # ---- conversations ---------------------------------------
-    conv1 = Conversation(customer_id=sarah.id, status="active", ai_active=True,
-                         created_at=NOW - timedelta(hours=6), updated_at=NOW - timedelta(hours=6))
-    conv2 = Conversation(customer_id=james.id, status="human_support", ai_active=False,
-                         created_at=NOW - timedelta(days=1), updated_at=NOW - timedelta(hours=3))
-    conv3 = Conversation(customer_id=maria.id, status="active", ai_active=True,
-                         created_at=NOW - timedelta(hours=30), updated_at=NOW - timedelta(hours=29))
-    db.add_all([conv1, conv2, conv3])
-    db.flush()
-
-    db.add_all([
-        Message(conversation_id=conv1.id, sender_type="customer",
-                content="How do I reset my password?", created_at=NOW - timedelta(hours=6)),
-        Message(conversation_id=conv1.id, sender_type="ai",
-                content="You can reset your password from Settings -> Security -> Reset Password. "
-                        "You'll get an email with a reset link that's valid for 30 minutes.",
-                intent="account_issue", confidence=0.93, created_at=NOW - timedelta(hours=6)),
-        Message(conversation_id=conv2.id, sender_type="customer",
-                content="My refund for order 4471 still hasn't arrived and it's been over a week.",
-                created_at=NOW - timedelta(days=1)),
-        Message(conversation_id=conv2.id, sender_type="ai",
-                content="I'm sorry about the delay. This looks like it needs a human to check the "
-                        "payment processor — I'm connecting you with support now.",
-                intent="refund_request", confidence=0.44, created_at=NOW - timedelta(days=1)),
-        Message(conversation_id=conv2.id, sender_type="agent",
-                content="Hi James, Omar here. I've raised this with billing and will update you today.",
-                created_at=NOW - timedelta(hours=3)),
-        Message(conversation_id=conv3.id, sender_type="customer",
-                content="Where is my order? Tracking hasn't moved in days.",
-                created_at=NOW - timedelta(hours=30)),
-        Message(conversation_id=conv3.id, sender_type="ai",
-                content="I can help. Orders usually show movement within 48 hours of the label being "
-                        "created. If it's been longer, I can open a tracking investigation ticket for you.",
-                intent="order_tracking", confidence=0.81, created_at=NOW - timedelta(hours=29)),
-    ])
-
-    db.commit()
-
-
-def attach_demo_sources(db) -> int:
-    """
-    Backfill RAG citations on the scripted demo conversations, using the real
-    retriever now that the knowledge base exists. Keeps the seeded data honest -
-    the sources shown in the dashboard are genuinely what retrieval returns.
-    """
-    from app.services.knowledge_service import retrieve_context
-
-    updated = 0
-    ai_messages = (
-        db.query(Message)
-        .filter(Message.sender_type == "ai", Message.sources.is_(None))
-        .all()
-    )
-    for ai_msg in ai_messages:
-        prompt = (
-            db.query(Message)
-            .filter(
-                Message.conversation_id == ai_msg.conversation_id,
-                Message.sender_type == "customer",
-                Message.created_at <= ai_msg.created_at,
-            )
-            .order_by(Message.created_at.desc())
-            .first()
+    # ---- 1. Production Users ------------------------------------
+    admin = db.query(User).filter(User.email == "hammadmehmood464@gmail.com").first()
+    if admin:
+        admin.name = "Hammad Mehmood"
+        admin.password_hash = _hash("Hammad@1234")
+        admin.role = UserRole.ADMIN
+        admin.is_active = True
+    else:
+        admin = User(
+            name="Hammad Mehmood",
+            email="hammadmehmood464@gmail.com",
+            password_hash=_hash("Hammad@1234"),
+            role=UserRole.ADMIN,
+            is_active=True,
         )
-        if not prompt:
-            continue
-        _, sources = retrieve_context(db, prompt.content)
-        if sources:
-            ai_msg.sources = sources
-            updated += 1
+        db.add(admin)
+
+    agent = db.query(User).filter(User.email == "maoun.778899@gmail.com").first()
+    if agent:
+        agent.name = "Aoun Muhammad"
+        agent.password_hash = _hash("Aoun@1234")
+        agent.role = UserRole.AGENT
+        agent.is_active = True
+    else:
+        agent = User(
+            name="Aoun Muhammad",
+            email="maoun.778899@gmail.com",
+            password_hash=_hash("Aoun@1234"),
+            role=UserRole.AGENT,
+            is_active=True,
+        )
+        db.add(agent)
 
     db.commit()
-    return updated
 
 
 def main() -> None:
@@ -278,7 +164,8 @@ def main() -> None:
     try:
         existing = db.query(User).count()
         if existing and not fresh:
-            print(f"Database already has {existing} users. Use --fresh to wipe and reseed.")
+            print(f"Database already has {existing} users. Ensuring production admin and agent...")
+            seed(db)
             return
         if fresh:
             wipe(db)
@@ -293,18 +180,15 @@ def main() -> None:
         else:
             seed_knowledge(db)
 
-        cited = attach_demo_sources(db)
-        if cited:
-            print(f"Attached RAG citations to {cited} demo AI messages.")
-
         from app.database.models import KnowledgeDocument
 
-        print("Seeded:", db.query(User).count(), "users,",
-              db.query(Ticket).count(), "tickets,",
-              db.query(Conversation).count(), "conversations,",
-              db.query(KnowledgeDocument).count(), "knowledge docs.")
-        print("\nLogin as  admin@laurel.test / admin1234   (admin)")
-        print("or        agent@laurel.test / agent1234   (agent)")
+        print("Production seed completed:")
+        print("Users:", db.query(User).count(),
+              "| Tickets:", db.query(Ticket).count(),
+              "| Conversations:", db.query(Conversation).count(),
+              "| Knowledge docs:", db.query(KnowledgeDocument).count())
+        print("\nAdmin Account: hammadmehmood464@gmail.com / Hammad@1234 (admin)")
+        print("Agent Account: maoun.778899@gmail.com     / Aoun@1234   (agent)")
     finally:
         db.close()
 

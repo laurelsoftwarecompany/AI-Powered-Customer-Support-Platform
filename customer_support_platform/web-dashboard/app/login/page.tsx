@@ -101,29 +101,29 @@ export default function LoginPage() {
         </div>
 
         <div className="mt-4 flex flex-col items-center gap-2 text-center text-[12px] text-ink-faint">
-          <span>Click to fill demo account:</span>
+          <span>Quick fill credentials:</span>
           <div className="flex flex-wrap justify-center gap-2">
             <button
               type="button"
               onClick={() => {
-                setEmail("admin@laurel.test");
-                setPassword("admin1234");
+                setEmail("hammadmehmood464@gmail.com");
+                setPassword("Hammad@1234");
                 setError(null);
               }}
               className="rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[11.5px] font-medium text-ink transition-colors hover:border-brand hover:text-brand"
             >
-              admin@laurel.test
+              Admin: hammadmehmood464@gmail.com
             </button>
             <button
               type="button"
               onClick={() => {
-                setEmail("agent@laurel.test");
-                setPassword("agent1234");
+                setEmail("maoun.778899@gmail.com");
+                setPassword("Aoun@1234");
                 setError(null);
               }}
               className="rounded-md border border-border bg-surface px-2.5 py-1 font-mono text-[11.5px] font-medium text-ink transition-colors hover:border-brand hover:text-brand"
             >
-              agent@laurel.test
+              Agent: maoun.778899@gmail.com
             </button>
           </div>
         </div>

@@ -24,9 +24,10 @@ node_modules/
 # Misc
 *.log
 
-# Documents
+# Documents and binaries
 Team A.pdf
 *.pdf
+*.apk
 
 # Backups
 **/.git_backup/
