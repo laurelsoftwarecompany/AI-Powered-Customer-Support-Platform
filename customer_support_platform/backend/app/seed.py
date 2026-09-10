@@ -10,7 +10,7 @@ Production accounts:
 """
 
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pwdlib import PasswordHash
 
@@ -28,7 +28,7 @@ from app.database.models import (
 
 password_hash = PasswordHash.recommended()
 
-NOW = datetime.utcnow()
+NOW = datetime.now(timezone.utc)
 
 
 def _hash(pw: str) -> str:
