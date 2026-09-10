@@ -2,10 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart'
-    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'api_client.dart';
 import '../storage/token_storage.dart';
 
 /// Real-time WebSocket service that connects to the backend and streams
@@ -50,18 +49,9 @@ class WebSocketService {
 
   static String get _wsBase {
     if (_override.isNotEmpty) return _override;
-    // Derive from API_BASE_URL override if present
-    const apiOverride = String.fromEnvironment('API_BASE_URL');
-    if (apiOverride.isNotEmpty) {
-      return apiOverride
-          .replaceFirst('http://', 'ws://')
-          .replaceFirst('https://', 'wss://');
-    }
-    if (kIsWeb) return 'ws://127.0.0.1:8000/api/v1';
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'ws://10.0.2.2:8000/api/v1';
-    }
-    return 'ws://127.0.0.1:8000/api/v1';
+    return ApiClient.baseUrl
+        .replaceFirst('https://', 'wss://')
+        .replaceFirst('http://', 'ws://');
   }
 
   // ------------------------------------------------------------------
